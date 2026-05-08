@@ -1,0 +1,26 @@
+### Variables
+@baseUrl = http://localhost:8080/api
+@token = <paste_token_here>
+
+### Signup
+POST {{baseUrl}}/signup
+Content-Type: application/json
+
+{
+  "username": "pankaj",
+  "email": "pankaj@example.com",
+  "password": "secret123"
+}
+
+### Login
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "pankaj@example.com",
+  "password": "secret123"
+}
+
+### Get Current User (protected)
+GET {{baseUrl}}/me
+Authorization: Bearer {{token}}
