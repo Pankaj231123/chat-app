@@ -158,17 +158,22 @@ export default function Chat() {
                 {messages.length === 0 && (
                   <p style={s.empty}>No messages yet. Say hello!</p>
                 )}
-                {messages.map(m => (
-                  <div key={m.id} style={{ ...s.msg, ...(m.username === user.username ? s.msgOwn : {}) }}>
-                    <div style={s.msgMeta}>
-                      <span style={s.msgUser}>{m.username}</span>
-                      <span style={s.msgTime}>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                {messages.map(m => {
+                  const isOwn = Number(m.user_id) === Number(user.id)
+                  return (
+                    <div key={m.id} style={s.msgRow}>
+                      <div style={{ ...s.msg, ...(isOwn ? s.msgOwn : s.msgOther) }}>
+                        <div style={{ ...s.msgMeta, ...(isOwn ? { justifyContent: 'flex-end' } : {}) }}>
+                          <span style={{ ...s.msgUser, ...(isOwn ? s.msgUserOwn : {}) }}>{m.username}</span>
+                          <span style={s.msgTime}>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div style={{ ...s.msgBubble, ...(isOwn ? s.msgBubbleOwn : {}) }}>
+                          {m.content}
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ ...s.msgBubble, ...(m.username === user.username ? s.msgBubbleOwn : {}) }}>
-                      {m.content}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
                 <div ref={bottomRef} />
               </div>
               <form onSubmit={sendMessage} style={s.inputRow}>
@@ -262,12 +267,15 @@ const s = {
   chatHeader: { padding: '14px 20px', borderBottom: '1px solid #eee', background: '#fafafa' },
   chatRoomName: { fontSize: 16, fontWeight: 700, color: '#333' },
   messages: { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 },
-  msg: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', maxWidth: '75%' },
-  msgOwn: { alignSelf: 'flex-end', alignItems: 'flex-end' },
+  msgRow: { display: 'flex', width: '100%' },
+  msg: { display: 'flex', flexDirection: 'column', maxWidth: '70%' },
+  msgOther: { alignItems: 'flex-start', marginRight: 'auto' },
+  msgOwn: { alignItems: 'flex-end', marginLeft: 'auto' },
   msgMeta: { display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 3 },
   msgUser: { fontSize: 12, fontWeight: 600, color: '#667eea' },
+  msgUserOwn: { color: '#764ba2' },
   msgTime: { fontSize: 11, color: '#aaa' },
-  msgBubble: { background: '#f0f2f5', borderRadius: '0 12px 12px 12px', padding: '8px 12px', fontSize: 14, color: '#222', wordBreak: 'break-word' },
+  msgBubble: { background: '#f0f2f5', borderRadius: '0 12px 12px 12px', padding: '8px 14px', fontSize: 14, color: '#222', wordBreak: 'break-word' },
   msgBubbleOwn: { background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', borderRadius: '12px 0 12px 12px' },
   inputRow: { display: 'flex', gap: 10, padding: '12px 20px', borderTop: '1px solid #eee', background: '#fafafa' },
   input: { flex: 1, border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', fontSize: 14, outline: 'none' },
