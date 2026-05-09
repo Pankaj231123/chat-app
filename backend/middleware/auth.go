@@ -10,12 +10,17 @@ import (
 
 func Auth(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		header := c.GetHeader("Authorization")
-		if !strings.HasPrefix(header, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
-			return
+		// Support token via query param for WebSocket upgrades
+		tokenStr := c.Query("token")
+		if tokenStr == "" {
+			header := c.GetHeader("Authorization")
+			if !strings.HasPrefix(header, "Bearer ") {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+				return
+			}
+			tokenStr = strings.TrimPrefix(header, "Bearer ")
 		}
-		tokenStr := strings.TrimPrefix(header, "Bearer ")
+
 		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
@@ -27,7 +32,7 @@ func Auth(secret string) gin.HandlerFunc {
 			return
 		}
 		claims := token.Claims.(jwt.MapClaims)
-		c.Set("userID", int(claims["user_id"].(float64)))
+		c.Set("user_id", int(claims["user_id"].(float64)))
 		c.Set("username", claims["username"].(string))
 		c.Next()
 	}

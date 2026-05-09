@@ -93,7 +93,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
-	userID := c.GetInt("userID")
+	userID := c.GetInt("user_id")
 	var user models.User
 	err := h.DB.QueryRow(
 		`SELECT id, username, email, created_at FROM users WHERE id = $1`, userID,

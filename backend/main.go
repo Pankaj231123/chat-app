@@ -23,6 +23,7 @@ func main() {
 	db.Migrate(database)
 
 	auth := &handlers.AuthHandler{DB: database, JWTSecret: cfg.JWTSecret}
+	room := &handlers.RoomHandler{DB: database}
 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
@@ -41,6 +42,20 @@ func main() {
 		protected.Use(middleware.Auth(cfg.JWTSecret))
 		{
 			protected.GET("/me", auth.Me)
+
+			// Rooms
+			protected.POST("/rooms", room.CreateRoom)
+			protected.GET("/rooms", room.ListRooms)
+			protected.GET("/rooms/:id", room.GetRoom)
+			protected.POST("/rooms/:id/join", room.JoinRoom)
+			protected.DELETE("/rooms/:id/join", room.LeaveRoom)
+
+			// Messages
+			protected.GET("/rooms/:id/messages", room.GetMessages)
+			protected.POST("/rooms/:id/messages", room.SendMessage)
+
+			// WebSocket  — token passed as ?token=<jwt>
+			protected.GET("/rooms/:id/ws", room.WebSocketChat)
 		}
 	}
 

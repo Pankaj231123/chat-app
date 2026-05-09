@@ -1,5 +1,5 @@
 ### Variables
-@baseUrl = http://localhost:8080/api
+@baseUrl = http://localhost:8081/api
 @token = <paste_token_here>
 
 ### Signup
@@ -7,8 +7,8 @@ POST {{baseUrl}}/signup
 Content-Type: application/json
 
 {
-  "username": "pankaj",
-  "email": "pankaj@example.com",
+  "username": "pankaj231",
+  "email": "pankaj1@example.com",
   "password": "secret123"
 }
 
@@ -24,3 +24,51 @@ Content-Type: application/json
 ### Get Current User (protected)
 GET {{baseUrl}}/me
 Authorization: Bearer {{token}}
+
+### Create Room
+POST {{baseUrl}}/rooms
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "general"
+}
+
+### List All Rooms
+GET {{baseUrl}}/rooms
+Authorization: Bearer {{token}}
+
+### Get Room (with members)
+GET {{baseUrl}}/rooms/1
+Authorization: Bearer {{token}}
+
+### Join Room
+POST {{baseUrl}}/rooms/1/join
+Authorization: Bearer {{token}}
+
+### Leave Room
+DELETE {{baseUrl}}/rooms/1/join
+Authorization: Bearer {{token}}
+
+### Send Message
+POST {{baseUrl}}/rooms/1/messages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "content": "Hello everyone!"
+}
+
+### Get Messages (latest 50)
+GET {{baseUrl}}/rooms/1/messages
+Authorization: Bearer {{token}}
+
+### Get Messages (paginated — before message id 20, limit 20)
+GET {{baseUrl}}/rooms/1/messages?limit=20&before=20
+Authorization: Bearer {{token}}
+
+### WebSocket Chat
+# Connect via a WebSocket client to:
+# ws://localhost:8081/api/rooms/1/ws?token={{token}}
+# Send JSON:  { "content": "hello via ws" }
+# Receive broadcast messages from all room members
