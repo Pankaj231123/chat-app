@@ -13,8 +13,10 @@ export default function Chat() {
   const [roomName, setRoomName] = useState('')
   const [createError, setCreateError] = useState('')
   const [creating, setCreating] = useState(false)
+  const [typingUsers, setTypingUsers] = useState([])
   const wsRef = useRef(null)
   const bottomRef = useRef(null)
+  const typingTimerRef = useRef(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -36,10 +38,12 @@ export default function Chat() {
 
   async function openRoom(room) {
     if (activeRoom?.id === room.id) return
+    clearTimeout(typingTimerRef.current)
     wsRef.current?.close()
     setActiveRoom(room)
     setMessages([])
     setMsgInput('')
+    setTypingUsers([])
 
     try {
       await joinRoom(room.id)
@@ -56,15 +60,45 @@ export default function Chat() {
       : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
     const ws = new WebSocket(`${wsBase}/api/rooms/${room.id}/ws?token=${token}`)
     ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data)
-      if (msg.id) setMessages(prev => [...prev, msg])
+      const data = JSON.parse(e.data)
+      console.log('[ws received]', data)
+      if (data.type === 'typing') {
+        setTypingUsers(prev =>
+          data.typing
+            ? prev.includes(data.username) ? prev : [...prev, data.username]
+            : prev.filter(u => u !== data.username)
+        )
+        return
+      }
+      if (data.id) {
+        setMessages(prev => [...prev, data])
+        setTypingUsers(prev => prev.filter(u => u !== data.username))
+      }
     }
     wsRef.current = ws
+  }
+
+  function sendTyping(isTyping) {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const payload = JSON.stringify({ type: 'typing', typing: isTyping })
+      console.log('[ws send]', payload)
+      wsRef.current.send(payload)
+    }
+  }
+
+  function handleInputChange(e) {
+    setMsgInput(e.target.value)
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+    sendTyping(true)
+    clearTimeout(typingTimerRef.current)
+    typingTimerRef.current = setTimeout(() => sendTyping(false), 2000)
   }
 
   function sendMessage(e) {
     e.preventDefault()
     if (!msgInput.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+    clearTimeout(typingTimerRef.current)
+    sendTyping(false)
     wsRef.current.send(JSON.stringify({ content: msgInput.trim() }))
     setMsgInput('')
   }
@@ -104,6 +138,19 @@ export default function Chat() {
 
   return (
     <div style={s.page}>
+      <style>{`
+        @keyframes typingBounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-5px); opacity: 1; }
+        }
+        .typing-dot {
+          width: 7px; height: 7px; border-radius: 50%;
+          background: #667eea; display: inline-block;
+          animation: typingBounce 1.2s infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+      `}</style>
       {/* Header */}
       <div style={s.header}>
         <span style={s.logo}>💬 Chat App</span>
@@ -176,11 +223,27 @@ export default function Chat() {
                 })}
                 <div ref={bottomRef} />
               </div>
+              <div style={s.typingBar}>
+                {typingUsers.length > 0 && (
+                  <>
+                    <span style={s.typingDots}>
+                      <span className="typing-dot" />
+                      <span className="typing-dot" />
+                      <span className="typing-dot" />
+                    </span>
+                    <span style={s.typingText}>
+                      {typingUsers.length === 1
+                        ? `${typingUsers[0]} is typing…`
+                        : `${typingUsers.join(', ')} are typing…`}
+                    </span>
+                  </>
+                )}
+              </div>
               <form onSubmit={sendMessage} style={s.inputRow}>
                 <input
                   style={s.input}
                   value={msgInput}
-                  onChange={e => setMsgInput(e.target.value)}
+                  onChange={handleInputChange}
                   placeholder={`Message #${activeRoom.name}`}
                 />
                 <button type="submit" style={s.sendBtn} disabled={!msgInput.trim()}>Send</button>
@@ -277,7 +340,10 @@ const s = {
   msgTime: { fontSize: 11, color: '#aaa' },
   msgBubble: { background: '#f0f2f5', borderRadius: '0 12px 12px 12px', padding: '8px 14px', fontSize: 14, color: '#222', wordBreak: 'break-word' },
   msgBubbleOwn: { background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', borderRadius: '12px 0 12px 12px' },
-  inputRow: { display: 'flex', gap: 10, padding: '12px 20px', borderTop: '1px solid #eee', background: '#fafafa' },
+  typingBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 20px 0', minHeight: 24 },
+  typingDots: { display: 'inline-flex', gap: 3, alignItems: 'center' },
+  typingText: { fontSize: 12, color: '#888', fontStyle: 'italic' },
+  inputRow: { display: 'flex', gap: 10, padding: '10px 20px 12px', borderTop: '1px solid #eee', background: '#fafafa' },
   input: { flex: 1, border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', fontSize: 14, outline: 'none' },
   sendBtn: {
     background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none',

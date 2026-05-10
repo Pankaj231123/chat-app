@@ -48,6 +48,16 @@ func (h *hub) broadcast(roomID int, msg models.Message) {
 	}
 }
 
+func (h *hub) broadcastExcept(roomID int, exclude *websocket.Conn, payload any) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for conn := range h.clients[roomID] {
+		if conn != exclude {
+			conn.WriteJSON(payload) //nolint: errcheck
+		}
+	}
+}
+
 // RoomHandler handles all room and message endpoints.
 type RoomHandler struct {
 	DB *sql.DB
@@ -315,11 +325,23 @@ func (h *RoomHandler) WebSocketChat(c *gin.Context) {
 
 	for {
 		var body struct {
+			Type    string `json:"type"`
 			Content string `json:"content"`
+			Typing  bool   `json:"typing"`
 		}
 		if err := conn.ReadJSON(&body); err != nil {
 			break
 		}
+
+		if body.Type == "typing" {
+			globalHub.broadcastExcept(roomID, conn, gin.H{
+				"type":     "typing",
+				"username": username,
+				"typing":   body.Typing,
+			})
+			continue
+		}
+
 		if body.Content == "" {
 			continue
 		}
