@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"chat-app/backend/config"
+	"chat-app/backend/crypto"
 	"chat-app/backend/db"
 	"chat-app/backend/handlers"
 	"chat-app/backend/middleware"
@@ -23,7 +24,12 @@ func main() {
 	db.Migrate(database)
 
 	auth := &handlers.AuthHandler{DB: database, JWTSecret: cfg.JWTSecret}
-	room := &handlers.RoomHandler{DB: database}
+
+	cipher, err := crypto.New(cfg.MsgEncKey)
+	if err != nil {
+		log.Fatalf("encryption key error: %v", err)
+	}
+	room := &handlers.RoomHandler{DB: database, Cipher: cipher}
 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{

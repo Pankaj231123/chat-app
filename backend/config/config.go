@@ -9,6 +9,7 @@ type Config struct {
 	Port      string
 	DBConnStr string
 	JWTSecret string
+	MsgEncKey string
 }
 
 func Load() *Config {
@@ -23,6 +24,7 @@ func Load() *Config {
 			getEnv("DB_NAME", "chatapp"),
 		),
 		JWTSecret: getEnv("JWT_SECRET", "changeme"),
+		MsgEncKey: getEnv("MESSAGE_ENC_KEY", ""),
 	}
 }
 

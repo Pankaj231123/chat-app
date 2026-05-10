@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"chat-app/backend/crypto"
 	"chat-app/backend/models"
 
 	"github.com/gin-gonic/gin"
@@ -60,7 +61,8 @@ func (h *hub) broadcastExcept(roomID int, exclude *websocket.Conn, payload any) 
 
 // RoomHandler handles all room and message endpoints.
 type RoomHandler struct {
-	DB *sql.DB
+	DB     *sql.DB
+	Cipher *crypto.Cipher
 }
 
 // CreateRoom POST /api/rooms
@@ -249,6 +251,9 @@ func (h *RoomHandler) GetMessages(c *gin.Context) {
 	for rows.Next() {
 		var m models.Message
 		rows.Scan(&m.ID, &m.RoomID, &m.UserID, &m.Username, &m.Content, &m.CreatedAt) //nolint: errcheck
+		if plain, err := h.Cipher.Decrypt(m.Content); err == nil {
+			m.Content = plain
+		}
 		msgs = append(msgs, m)
 	}
 
@@ -284,18 +289,25 @@ func (h *RoomHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
+	encrypted, err := h.Cipher.Encrypt(body.Content)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not encrypt message"})
+		return
+	}
+
 	var msg models.Message
 	err = h.DB.QueryRow(
 		`INSERT INTO messages (room_id, user_id, content)
 		 VALUES ($1, $2, $3)
 		 RETURNING id, room_id, user_id, content, created_at`,
-		roomID, userID, body.Content,
+		roomID, userID, encrypted,
 	).Scan(&msg.ID, &msg.RoomID, &msg.UserID, &msg.Content, &msg.CreatedAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not send message"})
 		return
 	}
 
+	msg.Content = body.Content // broadcast/respond with plaintext
 	h.DB.QueryRow(`SELECT username FROM users WHERE id=$1`, userID).Scan(&msg.Username) //nolint: errcheck
 
 	globalHub.broadcast(roomID, msg)
@@ -353,16 +365,22 @@ func (h *RoomHandler) WebSocketChat(c *gin.Context) {
 			continue
 		}
 
+		encrypted, err := h.Cipher.Encrypt(body.Content)
+		if err != nil {
+			continue
+		}
+
 		var msg models.Message
 		err = h.DB.QueryRow(
 			`INSERT INTO messages (room_id, user_id, content)
 			 VALUES ($1, $2, $3)
 			 RETURNING id, room_id, user_id, content, created_at`,
-			roomID, userID, body.Content,
+			roomID, userID, encrypted,
 		).Scan(&msg.ID, &msg.RoomID, &msg.UserID, &msg.Content, &msg.CreatedAt)
 		if err != nil {
 			continue
 		}
+		msg.Content = body.Content // broadcast plaintext
 		msg.Username = username
 
 		globalHub.broadcast(roomID, msg)
