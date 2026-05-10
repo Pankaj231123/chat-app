@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var upgrader = websocket.Upgrader{
@@ -49,6 +50,14 @@ func (h *hub) broadcast(roomID int, msg models.Message) {
 	}
 }
 
+func (h *hub) broadcastAll(roomID int, payload any) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for conn := range h.clients[roomID] {
+		conn.WriteJSON(payload) //nolint: errcheck
+	}
+}
+
 func (h *hub) broadcastExcept(roomID int, exclude *websocket.Conn, payload any) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -69,19 +78,37 @@ type RoomHandler struct {
 func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	userID := c.GetInt("user_id")
 	var body struct {
-		Name string `json:"name" binding:"required,min=2,max=100"`
+		Name     string `json:"name" binding:"required,min=2,max=100"`
+		Password string `json:"password"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	var passwordHash *string
+	isProtected := false
+	if body.Password != "" {
+		if len(body.Password) < 4 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "room password must be at least 4 characters"})
+			return
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not hash password"})
+			return
+		}
+		h := string(hash)
+		passwordHash = &h
+		isProtected = true
+	}
+
 	var room models.Room
 	err := h.DB.QueryRow(
-		`INSERT INTO rooms (name, created_by) VALUES ($1, $2)
-		 RETURNING id, name, created_by, created_at`,
-		body.Name, userID,
-	).Scan(&room.ID, &room.Name, &room.CreatedBy, &room.CreatedAt)
+		`INSERT INTO rooms (name, created_by, is_protected, password_hash) VALUES ($1, $2, $3, $4)
+		 RETURNING id, name, created_by, created_at, is_protected`,
+		body.Name, userID, isProtected, passwordHash,
+	).Scan(&room.ID, &room.Name, &room.CreatedBy, &room.CreatedAt, &room.IsProtected)
 	if err != nil {
 		if isUniqueViolation(err) {
 			c.JSON(http.StatusConflict, gin.H{"error": "room name already taken"})
@@ -99,13 +126,16 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 
 // ListRooms GET /api/rooms
 func (h *RoomHandler) ListRooms(c *gin.Context) {
+	userID := c.GetInt("user_id")
 	rows, err := h.DB.Query(
-		`SELECT r.id, r.name, r.created_by, r.created_at,
-		        COUNT(rm.user_id) AS member_count
+		`SELECT r.id, r.name, r.created_by, r.created_at, r.is_protected,
+		        COUNT(rm.user_id) AS member_count,
+		        EXISTS(SELECT 1 FROM room_members WHERE room_id = r.id AND user_id = $1) AS is_member
 		 FROM rooms r
 		 LEFT JOIN room_members rm ON rm.room_id = r.id
 		 GROUP BY r.id
 		 ORDER BY r.created_at DESC`,
+		userID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not list rooms"})
@@ -115,12 +145,13 @@ func (h *RoomHandler) ListRooms(c *gin.Context) {
 
 	type roomRow struct {
 		models.Room
-		MemberCount int `json:"member_count"`
+		MemberCount int  `json:"member_count"`
+		IsMember    bool `json:"is_member"`
 	}
 	rooms := []roomRow{}
 	for rows.Next() {
 		var rr roomRow
-		if err := rows.Scan(&rr.ID, &rr.Name, &rr.CreatedBy, &rr.CreatedAt, &rr.MemberCount); err != nil {
+		if err := rows.Scan(&rr.ID, &rr.Name, &rr.CreatedBy, &rr.CreatedAt, &rr.IsProtected, &rr.MemberCount, &rr.IsMember); err != nil {
 			continue
 		}
 		rooms = append(rooms, rr)
@@ -138,8 +169,8 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 
 	var room models.Room
 	err = h.DB.QueryRow(
-		`SELECT id, name, created_by, created_at FROM rooms WHERE id = $1`, roomID,
-	).Scan(&room.ID, &room.Name, &room.CreatedBy, &room.CreatedAt)
+		`SELECT id, name, created_by, created_at, is_protected FROM rooms WHERE id = $1`, roomID,
+	).Scan(&room.ID, &room.Name, &room.CreatedBy, &room.CreatedAt, &room.IsProtected)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "room not found"})
 		return
@@ -176,14 +207,42 @@ func (h *RoomHandler) JoinRoom(c *gin.Context) {
 	}
 	userID := c.GetInt("user_id")
 
-	var exists bool
-	h.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1)`, roomID).Scan(&exists) //nolint: errcheck
-	if !exists {
+	var body struct {
+		Password string `json:"password"`
+	}
+	// ignore bind error — password is optional for public rooms
+	c.ShouldBindJSON(&body) //nolint: errcheck
+
+	var isProtected bool
+	var passwordHash *string
+	err = h.DB.QueryRow(
+		`SELECT is_protected, password_hash FROM rooms WHERE id=$1`, roomID,
+	).Scan(&isProtected, &passwordHash)
+	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "room not found"})
 		return
 	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch room"})
+		return
+	}
 
-	_, err = h.DB.Exec(
+	if isProtected {
+		var alreadyMember bool
+		h.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM room_members WHERE room_id=$1 AND user_id=$2)`, roomID, userID).Scan(&alreadyMember) //nolint: errcheck
+		if !alreadyMember {
+			if body.Password == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "this room requires a password"})
+				return
+			}
+			if passwordHash == nil || bcrypt.CompareHashAndPassword([]byte(*passwordHash), []byte(body.Password)) != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect room password"})
+				return
+			}
+		}
+	}
+
+	result, err := h.DB.Exec(
 		`INSERT INTO room_members (room_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 		roomID, userID,
 	)
@@ -191,6 +250,17 @@ func (h *RoomHandler) JoinRoom(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not join room"})
 		return
 	}
+
+	// Notify room members when someone newly joins (not a re-join no-op)
+	if n, _ := result.RowsAffected(); n > 0 {
+		username := c.GetString("username")
+		globalHub.broadcastAll(roomID, gin.H{
+			"type":     "join",
+			"username": username,
+			"message":  username + " joined this conversation",
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "joined room"})
 }
 
@@ -323,6 +393,13 @@ func (h *RoomHandler) WebSocketChat(c *gin.Context) {
 	}
 	userID := c.GetInt("user_id")
 	username := c.GetString("username")
+
+	var isMember bool
+	h.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM room_members WHERE room_id=$1 AND user_id=$2)`, roomID, userID).Scan(&isMember) //nolint: errcheck
+	if !isMember {
+		c.JSON(http.StatusForbidden, gin.H{"error": "join the room first"})
+		return
+	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

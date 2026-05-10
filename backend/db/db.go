@@ -28,11 +28,15 @@ func Migrate(db *sql.DB) {
 			created_at TIMESTAMPTZ  DEFAULT NOW()
 		);`,
 		`CREATE TABLE IF NOT EXISTS rooms (
-			id         SERIAL PRIMARY KEY,
-			name       VARCHAR(100) UNIQUE NOT NULL,
-			created_by INT          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			created_at TIMESTAMPTZ  DEFAULT NOW()
+			id            SERIAL PRIMARY KEY,
+			name          VARCHAR(100) UNIQUE NOT NULL,
+			created_by    INT          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at    TIMESTAMPTZ  DEFAULT NOW(),
+			is_protected  BOOLEAN      NOT NULL DEFAULT FALSE,
+			password_hash TEXT
 		);`,
+		`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS is_protected BOOLEAN NOT NULL DEFAULT FALSE;`,
+		`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS password_hash TEXT;`,
 		`CREATE TABLE IF NOT EXISTS room_members (
 			room_id   INT         NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
 			user_id   INT         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
