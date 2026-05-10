@@ -49,7 +49,10 @@ export default function Login() {
             autoFocus
           />
 
-          <label style={styles.label}>Password</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={styles.label}>Password</label>
+            <Link to="/forgot-password" style={styles.forgotLink}>Forgot password?</Link>
+          </div>
           <input
             style={styles.input}
             type="password"
@@ -127,4 +130,5 @@ const styles = {
   },
   footer: { marginTop: 24, textAlign: 'center', fontSize: 14, color: '#666' },
   link: { color: '#667eea', textDecoration: 'none', fontWeight: 600 },
+  forgotLink: { color: '#667eea', textDecoration: 'none', fontSize: 12, fontWeight: 500 },
 }
