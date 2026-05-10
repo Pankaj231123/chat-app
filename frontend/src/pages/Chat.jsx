@@ -9,14 +9,26 @@ export default function Chat() {
   const [activeRoom, setActiveRoom] = useState(null)
   const [messages, setMessages] = useState([])
   const [msgInput, setMsgInput] = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [roomName, setRoomName] = useState('')
-  const [createError, setCreateError] = useState('')
-  const [creating, setCreating] = useState(false)
   const [typingUsers, setTypingUsers] = useState([])
   const wsRef = useRef(null)
   const bottomRef = useRef(null)
   const typingTimerRef = useRef(null)
+
+  // Create room modal
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [roomName, setRoomName] = useState('')
+  const [createPassword, setCreatePassword] = useState('')
+  const [showCreatePwd, setShowCreatePwd] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  // Join password modal (for protected rooms)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [pendingRoom, setPendingRoom] = useState(null)
+  const [joinPassword, setJoinPassword] = useState('')
+  const [showJoinPwd, setShowJoinPwd] = useState(false)
+  const [joinError, setJoinError] = useState('')
+  const [joining, setJoining] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -36,7 +48,8 @@ export default function Chat() {
     } catch { /* ignore */ }
   }
 
-  async function openRoom(room) {
+  // skipJoin=true when the caller already called joinRoom (e.g. after join password modal)
+  async function openRoom(room, skipJoin = false) {
     if (activeRoom?.id === room.id) return
     clearTimeout(typingTimerRef.current)
     wsRef.current?.close()
@@ -45,9 +58,9 @@ export default function Chat() {
     setMsgInput('')
     setTypingUsers([])
 
-    try {
-      await joinRoom(room.id)
-    } catch { /* already a member is fine */ }
+    if (!skipJoin) {
+      try { await joinRoom(room.id) } catch { /* already a member */ }
+    }
 
     try {
       const msgs = await getMessages(room.id)
@@ -61,13 +74,16 @@ export default function Chat() {
     const ws = new WebSocket(`${wsBase}/api/rooms/${room.id}/ws?token=${token}`)
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data)
-      console.log('[ws received]', data)
       if (data.type === 'typing') {
         setTypingUsers(prev =>
           data.typing
             ? prev.includes(data.username) ? prev : [...prev, data.username]
             : prev.filter(u => u !== data.username)
         )
+        return
+      }
+      if (data.type === 'join') {
+        setMessages(prev => [...prev, { _sysKey: Date.now() + Math.random(), isSystem: true, message: data.message }])
         return
       }
       if (data.id) {
@@ -78,11 +94,48 @@ export default function Chat() {
     wsRef.current = ws
   }
 
+  function handleRoomClick(room) {
+    // Protected room where user is not yet a member → ask for password
+    if (room.is_protected && !room.is_member) {
+      setPendingRoom(room)
+      setJoinPassword('')
+      setJoinError('')
+      setShowJoinPwd(false)
+      setShowJoinModal(true)
+      return
+    }
+    openRoom(room)
+  }
+
+  async function handleJoinWithPassword(e) {
+    e.preventDefault()
+    if (!joinPassword.trim()) return
+    setJoining(true)
+    setJoinError('')
+    try {
+      await joinRoom(pendingRoom.id, joinPassword.trim())
+      // Mark as member in local state so next click skips modal
+      setRooms(prev => prev.map(r => r.id === pendingRoom.id ? { ...r, is_member: true } : r))
+      setShowJoinModal(false)
+      openRoom(pendingRoom, true)
+      setPendingRoom(null)
+    } catch (err) {
+      setJoinError(err.message)
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  function closeJoinModal() {
+    setShowJoinModal(false)
+    setPendingRoom(null)
+    setJoinPassword('')
+    setJoinError('')
+  }
+
   function sendTyping(isTyping) {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const payload = JSON.stringify({ type: 'typing', typing: isTyping })
-      console.log('[ws send]', payload)
-      wsRef.current.send(payload)
+      wsRef.current.send(JSON.stringify({ type: 'typing', typing: isTyping }))
     }
   }
 
@@ -109,11 +162,10 @@ export default function Chat() {
     setCreating(true)
     setCreateError('')
     try {
-      const room = await createRoom(roomName.trim())
-      setRooms(prev => [{ ...room, member_count: 1 }, ...prev])
-      setShowModal(false)
-      setRoomName('')
-      openRoom(room)
+      const room = await createRoom(roomName.trim(), createPassword.trim() || undefined)
+      setRooms(prev => [{ ...room, member_count: 1, is_member: true }, ...prev])
+      closeCreateModal()
+      openRoom(room, true)
     } catch (err) {
       setCreateError(err.message)
     } finally {
@@ -121,9 +173,11 @@ export default function Chat() {
     }
   }
 
-  function closeModal() {
-    setShowModal(false)
+  function closeCreateModal() {
+    setShowCreateModal(false)
     setRoomName('')
+    setCreatePassword('')
+    setShowCreatePwd(false)
     setCreateError('')
   }
 
@@ -150,7 +204,11 @@ export default function Chat() {
         }
         .typing-dot:nth-child(2) { animation-delay: 0.2s; }
         .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        .room-btn:hover { background: rgba(102,126,234,0.15) !important; }
+        .pwd-toggle { background: none; border: none; cursor: pointer; padding: 0 10px; color: #888; font-size: 16px; }
+        .pwd-toggle:hover { color: #667eea; }
       `}</style>
+
       {/* Header */}
       <div style={s.header}>
         <span style={s.logo}>💬 Chat App</span>
@@ -165,7 +223,7 @@ export default function Chat() {
         <aside style={s.sidebar}>
           <div style={s.sidebarHeader}>
             <span style={s.sidebarTitle}>Rooms</span>
-            <button onClick={() => setShowModal(true)} style={s.createBtn} title="Create room">
+            <button onClick={() => setShowCreateModal(true)} style={s.createBtn} title="Create room">
               + New
             </button>
           </div>
@@ -176,10 +234,16 @@ export default function Chat() {
             {rooms.map(r => (
               <button
                 key={r.id}
-                onClick={() => openRoom(r)}
+                className="room-btn"
+                onClick={() => handleRoomClick(r)}
                 style={{ ...s.roomItem, ...(activeRoom?.id === r.id ? s.roomItemActive : {}) }}
               >
-                <span style={s.roomName}># {r.name}</span>
+                <div style={s.roomItemTop}>
+                  <span style={s.roomName}>
+                    {r.is_protected ? '🔒' : '#'} {r.name}
+                  </span>
+                  {r.is_member && <span style={s.memberBadge}>joined</span>}
+                </div>
                 <span style={s.memberCount}>{r.member_count} member{r.member_count !== 1 ? 's' : ''}</span>
               </button>
             ))}
@@ -192,20 +256,34 @@ export default function Chat() {
             <div style={s.placeholder}>
               <div style={s.placeholderIcon}>💬</div>
               <p style={s.placeholderText}>Select a room to start chatting</p>
-              <button onClick={() => setShowModal(true)} style={s.createBtnLarge}>
+              <button onClick={() => setShowCreateModal(true)} style={s.createBtnLarge}>
                 + Create a Room
               </button>
             </div>
           ) : (
             <>
               <div style={s.chatHeader}>
-                <span style={s.chatRoomName}># {activeRoom.name}</span>
+                <span style={s.chatRoomName}>
+                  {activeRoom.is_protected ? '🔒' : '#'} {activeRoom.name}
+                </span>
+                {activeRoom.is_protected && (
+                  <span style={s.protectedTag}>Password Protected</span>
+                )}
               </div>
               <div style={s.messages}>
                 {messages.length === 0 && (
                   <p style={s.empty}>No messages yet. Say hello!</p>
                 )}
                 {messages.map(m => {
+                  if (m.isSystem) {
+                    return (
+                      <div key={m._sysKey} style={s.systemMsg}>
+                        <span style={s.systemMsgLine} />
+                        <span style={s.systemMsgText}>{m.message}</span>
+                        <span style={s.systemMsgLine} />
+                      </div>
+                    )
+                  }
                   const isOwn = Number(m.user_id) === Number(user.id)
                   return (
                     <div key={m.id} style={s.msgRow}>
@@ -244,7 +322,7 @@ export default function Chat() {
                   style={s.input}
                   value={msgInput}
                   onChange={handleInputChange}
-                  placeholder={`Message #${activeRoom.name}`}
+                  placeholder={`Message ${activeRoom.is_protected ? '🔒' : '#'}${activeRoom.name}`}
                 />
                 <button type="submit" style={s.sendBtn} disabled={!msgInput.trim()}>Send</button>
               </form>
@@ -254,28 +332,103 @@ export default function Chat() {
       </div>
 
       {/* Create Room Modal */}
-      {showModal && (
-        <div style={s.overlay} onClick={closeModal}>
+      {showCreateModal && (
+        <div style={s.overlay} onClick={closeCreateModal}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>
             <div style={s.modalHeader}>
               <span style={s.modalTitle}>Create a Room</span>
-              <button onClick={closeModal} style={s.closeBtn}>✕</button>
+              <button onClick={closeCreateModal} style={s.closeBtn}>✕</button>
             </div>
             <form onSubmit={handleCreateRoom} style={s.modalBody}>
-              <label style={s.label}>Room Name</label>
-              <input
-                style={s.modalInput}
-                value={roomName}
-                onChange={e => { setRoomName(e.target.value); setCreateError('') }}
-                placeholder="e.g. general, design, random"
-                maxLength={100}
-                autoFocus
-              />
+              <div>
+                <label style={s.label}>Room Name</label>
+                <input
+                  style={s.modalInput}
+                  value={roomName}
+                  onChange={e => { setRoomName(e.target.value); setCreateError('') }}
+                  placeholder="e.g. general, design, random"
+                  maxLength={100}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label style={s.label}>
+                  Password <span style={s.optionalTag}>(optional — leave blank for public room)</span>
+                </label>
+                <div style={s.pwdRow}>
+                  <input
+                    style={{ ...s.modalInput, flex: 1, border: 'none', borderRadius: 0 }}
+                    type={showCreatePwd ? 'text' : 'password'}
+                    value={createPassword}
+                    onChange={e => setCreatePassword(e.target.value)}
+                    placeholder="Set a room password…"
+                    minLength={createPassword ? 4 : undefined}
+                  />
+                  <button
+                    type="button"
+                    className="pwd-toggle"
+                    onClick={() => setShowCreatePwd(v => !v)}
+                    title={showCreatePwd ? 'Hide' : 'Show'}
+                  >
+                    {showCreatePwd ? '🙈' : '👁'}
+                  </button>
+                </div>
+                {createPassword && (
+                  <p style={s.hintText}>
+                    🔒 This room will be password protected
+                  </p>
+                )}
+              </div>
               {createError && <p style={s.errorText}>{createError}</p>}
               <div style={s.modalActions}>
-                <button type="button" onClick={closeModal} style={s.cancelBtn}>Cancel</button>
+                <button type="button" onClick={closeCreateModal} style={s.cancelBtn}>Cancel</button>
                 <button type="submit" style={s.submitBtn} disabled={creating || !roomName.trim()}>
                   {creating ? 'Creating…' : 'Create Room'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Join Password Modal */}
+      {showJoinModal && pendingRoom && (
+        <div style={s.overlay} onClick={closeJoinModal}>
+          <div style={s.modal} onClick={e => e.stopPropagation()}>
+            <div style={s.modalHeader}>
+              <span style={s.modalTitle}>🔒 Password Required</span>
+              <button onClick={closeJoinModal} style={s.closeBtn}>✕</button>
+            </div>
+            <form onSubmit={handleJoinWithPassword} style={s.modalBody}>
+              <p style={s.joinSubtitle}>
+                Enter the password to join <strong>#{pendingRoom.name}</strong>
+              </p>
+              <div>
+                <label style={s.label}>Room Password</label>
+                <div style={s.pwdRow}>
+                  <input
+                    style={{ ...s.modalInput, flex: 1, border: 'none', borderRadius: 0 }}
+                    type={showJoinPwd ? 'text' : 'password'}
+                    value={joinPassword}
+                    onChange={e => { setJoinPassword(e.target.value); setJoinError('') }}
+                    placeholder="Enter room password…"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="pwd-toggle"
+                    onClick={() => setShowJoinPwd(v => !v)}
+                    title={showJoinPwd ? 'Hide' : 'Show'}
+                  >
+                    {showJoinPwd ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+              {joinError && <p style={s.errorText}>{joinError}</p>}
+              <div style={s.modalActions}>
+                <button type="button" onClick={closeJoinModal} style={s.cancelBtn}>Cancel</button>
+                <button type="submit" style={s.submitBtn} disabled={joining || !joinPassword.trim()}>
+                  {joining ? 'Joining…' : 'Join Room'}
                 </button>
               </div>
             </form>
@@ -316,7 +469,12 @@ const s = {
     cursor: 'pointer', textAlign: 'left', marginBottom: 2, transition: 'background .15s',
   },
   roomItemActive: { background: 'rgba(102,126,234,0.3)' },
-  roomName: { color: '#c8d0e8', fontSize: 14 },
+  roomItemTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 },
+  roomName: { color: '#c8d0e8', fontSize: 14, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  memberBadge: {
+    fontSize: 9, fontWeight: 700, color: '#48bb78', background: 'rgba(72,187,120,0.15)',
+    border: '1px solid rgba(72,187,120,0.3)', borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+  },
   memberCount: { color: '#5a6070', fontSize: 11, marginTop: 2 },
   empty: { color: '#5a6070', fontSize: 13, padding: '12px 10px' },
   main: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fff' },
@@ -327,8 +485,12 @@ const s = {
     background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none',
     borderRadius: 8, padding: '10px 24px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
   },
-  chatHeader: { padding: '14px 20px', borderBottom: '1px solid #eee', background: '#fafafa' },
+  chatHeader: { padding: '14px 20px', borderBottom: '1px solid #eee', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 10 },
   chatRoomName: { fontSize: 16, fontWeight: 700, color: '#333' },
+  protectedTag: {
+    fontSize: 11, fontWeight: 600, color: '#764ba2', background: 'rgba(118,75,162,0.1)',
+    border: '1px solid rgba(118,75,162,0.25)', borderRadius: 4, padding: '2px 8px',
+  },
   messages: { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 },
   msgRow: { display: 'flex', width: '100%' },
   msg: { display: 'flex', flexDirection: 'column', maxWidth: '70%' },
@@ -338,6 +500,9 @@ const s = {
   msgUser: { fontSize: 12, fontWeight: 600, color: '#667eea' },
   msgUserOwn: { color: '#764ba2' },
   msgTime: { fontSize: 11, color: '#aaa' },
+  systemMsg: { display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', userSelect: 'none' },
+  systemMsgLine: { flex: 1, height: 1, background: '#e8e8e8' },
+  systemMsgText: { fontSize: 12, color: '#aaa', whiteSpace: 'nowrap', fontStyle: 'italic' },
   msgBubble: { background: '#f0f2f5', borderRadius: '0 12px 12px 12px', padding: '8px 14px', fontSize: 14, color: '#222', wordBreak: 'break-word' },
   msgBubbleOwn: { background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', borderRadius: '12px 0 12px 12px' },
   typingBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 20px 0', minHeight: 24 },
@@ -349,7 +514,7 @@ const s = {
     background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none',
     borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
   },
-  // Modal
+  // Modals
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
@@ -357,7 +522,7 @@ const s = {
   },
   modal: {
     background: '#fff', borderRadius: 12, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-    overflow: 'hidden', animation: 'none',
+    overflow: 'hidden',
   },
   modalHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -366,12 +531,17 @@ const s = {
   },
   modalTitle: { fontSize: 16, fontWeight: 700, color: '#fff' },
   closeBtn: { background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 },
-  modalBody: { padding: 24, display: 'flex', flexDirection: 'column', gap: 14 },
-  label: { fontSize: 13, fontWeight: 600, color: '#555' },
+  modalBody: { padding: 24, display: 'flex', flexDirection: 'column', gap: 16 },
+  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 6 },
+  optionalTag: { fontWeight: 400, color: '#999', fontSize: 11 },
   modalInput: {
+    width: '100%', boxSizing: 'border-box',
     border: '1.5px solid #ddd', borderRadius: 8, padding: '10px 14px',
     fontSize: 15, outline: 'none', transition: 'border-color .2s',
   },
+  pwdRow: { display: 'flex', alignItems: 'center', border: '1.5px solid #ddd', borderRadius: 8, overflow: 'hidden' },
+  hintText: { fontSize: 12, color: '#764ba2', margin: '6px 0 0', fontWeight: 500 },
+  joinSubtitle: { fontSize: 14, color: '#555', margin: 0 },
   errorText: { color: '#e53e3e', fontSize: 13, margin: 0 },
   modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
   cancelBtn: {

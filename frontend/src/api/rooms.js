@@ -15,15 +15,18 @@ export async function listRooms() {
   return request('/rooms')
 }
 
-export async function createRoom(name) {
+export async function createRoom(name, password) {
   return request('/rooms', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(password ? { name, password } : { name }),
   })
 }
 
-export async function joinRoom(id) {
-  return request(`/rooms/${id}/join`, { method: 'POST' })
+export async function joinRoom(id, password) {
+  return request(`/rooms/${id}/join`, {
+    method: 'POST',
+    body: JSON.stringify(password ? { password } : {}),
+  })
 }
 
 export async function getMessages(id) {
