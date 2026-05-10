@@ -50,6 +50,14 @@ func Migrate(db *sql.DB) {
 			content    TEXT        NOT NULL,
 			created_at TIMESTAMPTZ DEFAULT NOW()
 		);`,
+		`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			id         SERIAL PRIMARY KEY,
+			user_id    INT         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			token      TEXT        NOT NULL UNIQUE,
+			expires_at TIMESTAMPTZ NOT NULL,
+			used       BOOLEAN     NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		);`,
 	}
 	for _, q := range queries {
 		if _, err := db.Exec(q); err != nil {

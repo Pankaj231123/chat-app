@@ -7,6 +7,7 @@ import (
 	"chat-app/backend/crypto"
 	"chat-app/backend/db"
 	"chat-app/backend/handlers"
+	"chat-app/backend/mailer"
 	"chat-app/backend/middleware"
 
 	"github.com/gin-contrib/cors"
@@ -23,7 +24,26 @@ func main() {
 	database := db.Connect(cfg.DBConnStr)
 	db.Migrate(database)
 
-	auth := &handlers.AuthHandler{DB: database, JWTSecret: cfg.JWTSecret}
+	var mailSender mailer.Sender
+	if cfg.SMTP.Host != "" {
+		mailSender = mailer.New(mailer.Config{
+			Host: cfg.SMTP.Host,
+			Port: cfg.SMTP.Port,
+			User: cfg.SMTP.User,
+			Pass: cfg.SMTP.Pass,
+			From: cfg.SMTP.From,
+		})
+	} else {
+		log.Println("SMTP not configured — using no-op mailer (reset links will be logged)")
+		mailSender = mailer.NoOp{}
+	}
+
+	auth := &handlers.AuthHandler{
+		DB:        database,
+		JWTSecret: cfg.JWTSecret,
+		AppURL:    cfg.AppURL,
+		Mailer:    mailSender,
+	}
 
 	cipher, err := crypto.New(cfg.MsgEncKey)
 	if err != nil {
@@ -43,6 +63,8 @@ func main() {
 	{
 		api.POST("/signup", auth.Signup)
 		api.POST("/login", auth.Login)
+		api.POST("/forgot-password", auth.ForgotPassword)
+		api.POST("/reset-password", auth.ResetPassword)
 
 		protected := api.Group("/")
 		protected.Use(middleware.Auth(cfg.JWTSecret))
