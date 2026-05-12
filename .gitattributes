@@ -1,0 +1,8 @@
+# GitHub Linguist overrides
+# Mark build output and config as generated so Go becomes the primary language
+
+frontend/dist/**          linguist-generated
+frontend/package.json     linguist-generated
+frontend/package-lock.json linguist-generated
+frontend/vite.config.js   linguist-generated
+frontend/index.html       linguist-generated
