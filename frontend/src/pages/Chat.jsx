@@ -35,6 +35,9 @@ export default function Chat() {
     if (!stored) { navigate('/login'); return }
     setUser(JSON.parse(stored))
     fetchRooms()
+
+    const roomPollInterval = setInterval(fetchRooms, 15000)
+    return () => clearInterval(roomPollInterval)
   }, [navigate])
 
   useEffect(() => {
@@ -44,7 +47,15 @@ export default function Chat() {
   async function fetchRooms() {
     try {
       const data = await listRooms()
-      setRooms(data ?? [])
+      if (!data) return
+      // Preserve local is_member overrides (e.g. rooms joined this session)
+      setRooms(prev => {
+        const localMemberships = new Map(prev.map(r => [r.id, r.is_member]))
+        return data.map(r => ({
+          ...r,
+          is_member: localMemberships.get(r.id) ?? r.is_member,
+        }))
+      })
     } catch { /* ignore */ }
   }
 
