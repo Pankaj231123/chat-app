@@ -12,6 +12,7 @@ A full-stack real-time chat application with end-to-end message encryption, pass
 - **Room management** — create, join, leave, and browse chat rooms
 - **Paginated message history** — cursor-based pagination (limit + before)
 - **Password visibility toggle** — show/hide password on login and signup
+- **Room list polling** — frontend polls for new rooms every few seconds so the room list stays current without a full page reload
 
 ## Tech Stack
 
@@ -25,6 +26,7 @@ A full-stack real-time chat application with end-to-end message encryption, pass
 | [bcrypt](https://pkg.go.dev/golang.org/x/crypto/bcrypt) | Password hashing |
 | AES-256-GCM (`crypto/aes`, `crypto/cipher`) | Message encryption at rest |
 | [godotenv](https://github.com/joho/godotenv) | `.env` file loading |
+| [gin-contrib/cors](https://github.com/gin-contrib/cors) | CORS middleware |
 
 **Frontend**
 | Package | Purpose |
@@ -132,7 +134,7 @@ npm install
 npm run dev
 ```
 
-The UI is available at `http://localhost:5173`. The Vite dev server proxies all `/api` requests to the backend, so no CORS configuration is needed during development.
+The UI is available at `http://localhost:5173`. The Vite dev server proxies all `/api` requests to the backend, so no CORS configuration is needed during development. In production, update `AllowOrigins` in `backend/main.go` to match your frontend domain.
 
 ## API Reference
 
