@@ -12,7 +12,7 @@ A full-stack real-time chat application with end-to-end message encryption, pass
 - **Room management** — create, join, leave, and browse chat rooms
 - **Paginated message history** — cursor-based pagination (limit + before)
 - **Password visibility toggle** — show/hide password on login and signup
-- **Room list polling** — frontend polls for new rooms every few seconds so the room list stays current without a full page reload
+- **Room list polling** — frontend polls for new rooms every 15 seconds so the room list stays current without a full page reload
 
 ## Tech Stack
 
@@ -134,7 +134,7 @@ npm install
 npm run dev
 ```
 
-The UI is available at `http://localhost:5173`. The Vite dev server proxies all `/api` requests to the backend, so no CORS configuration is needed during development. In production, update `AllowOrigins` in `backend/main.go` to match your frontend domain.
+The UI is available at `http://localhost:5173`. The Vite dev server proxies all `/api` requests (including WebSocket upgrades) to the backend, so no CORS configuration is needed during development. In production, update `AllowOrigins` in `backend/main.go` to match your frontend domain.
 
 ## API Reference
 
@@ -148,15 +148,15 @@ All routes are prefixed with `/api`. Protected routes require an `Authorization:
 | POST | `/api/login` | | Login and receive a JWT |
 | GET | `/api/me` | ✓ | Get the current user |
 | POST | `/api/forgot-password` | | Send a password-reset email |
-| POST | `/api/reset-password` | | Reset password with the emailed token |
+| POST | `/api/reset-password` | | Reset password with the emailed token (token expires in 1 hour) |
 
 ### Rooms
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|:----:|-------------|
 | POST | `/api/rooms` | ✓ | Create a room (optional password) |
-| GET | `/api/rooms` | ✓ | List all rooms |
-| GET | `/api/rooms/:id` | ✓ | Get a single room |
+| GET | `/api/rooms` | ✓ | List all rooms (includes `member_count` and `is_member` per room) |
+| GET | `/api/rooms/:id` | ✓ | Get a single room (includes `members` array with `joined_at`) |
 | POST | `/api/rooms/:id/join` | ✓ | Join a room (provide password if protected) |
 | DELETE | `/api/rooms/:id/join` | ✓ | Leave a room |
 
@@ -164,7 +164,7 @@ All routes are prefixed with `/api`. Protected routes require an `Authorization:
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|:----:|-------------|
-| GET | `/api/rooms/:id/messages` | ✓ | Fetch message history (`?limit=50&before=<id>`) |
+| GET | `/api/rooms/:id/messages` | ✓ | Fetch message history (`?limit=50&before=<id>`), returned oldest-first |
 | POST | `/api/rooms/:id/messages` | ✓ | Send a message (REST fallback) |
 | GET | `/api/rooms/:id/ws?token=<jwt>` | ✓ | Open a WebSocket for real-time chat |
 
@@ -182,7 +182,20 @@ Send messages as JSON:
 { "content": "Hello, world!" }
 ```
 
-Incoming broadcasts include the full message object with sender info. System events (join/leave, typing) are also delivered over the same connection.
+**Outgoing message types**
+
+| Type | Payload | Description |
+|------|---------|-------------|
+| _(none)_ | `{ "content": "..." }` | Send a chat message (max 2000 chars) |
+| `typing` | `{ "type": "typing", "typing": true }` | Broadcast typing indicator |
+
+**Incoming message types**
+
+| Type | Description |
+|------|-------------|
+| `message` | Full message object with sender info |
+| `typing` | `{ "type": "typing", "username": "...", "typing": true/false }` |
+| `join` | System event — delivered when a user joins the room |
 
 ## Environment Variables
 
