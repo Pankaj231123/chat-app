@@ -87,6 +87,7 @@ DB_NAME=chatapp
 JWT_SECRET=replace_with_a_long_random_secret
 MESSAGE_ENC_KEY=your_64_char_hex_key
 APP_URL=http://localhost:5173
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USER=
@@ -99,6 +100,7 @@ Notes:
 - `MESSAGE_ENC_KEY` must be a 64-character hex string. Generate one with `openssl rand -hex 32`.
 - If `SMTP_HOST` is blank, reset links are still generated and logged by the backend.
 - `APP_URL` is used to build password reset links sent to the frontend.
+- `CORS_ALLOWED_ORIGINS` accepts a comma-separated list of frontend origins for HTTP and WebSocket access. If omitted, it falls back to `APP_URL`.
 
 ### 3. Configure the frontend
 
@@ -214,6 +216,6 @@ The backend creates these tables automatically:
 
 ## Development Notes
 
-- CORS is currently configured in the backend for `http://localhost:5173`.
+- CORS and WebSocket origin checks default to `APP_URL`, or use `CORS_ALLOWED_ORIGINS` when you need multiple frontend origins.
 - The Vite dev server proxies `/api` requests and WebSocket upgrades to the backend.
 - WebSocket auth accepts the JWT through the `token` query parameter.
