@@ -50,10 +50,11 @@ func main() {
 		log.Fatalf("encryption key error: %v", err)
 	}
 	room := &handlers.RoomHandler{DB: database, Cipher: cipher}
+	room.SetAllowedOrigins(cfg.AllowedOrigins)
 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
