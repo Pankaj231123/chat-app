@@ -434,16 +434,42 @@ export default function Chat() {
           ) : (
             <>
               <div style={s.chatHeader}>
-                <span style={s.chatRoomName}>
-                  {activeRoom.is_protected ? '🔒' : '#'} {activeRoom.name}
-                </span>
-                {activeRoom.is_protected && (
-                  <span style={s.protectedTag}>Password Protected</span>
-                )}
+                <div style={s.chatHeaderMain}>
+                  <span style={s.chatRoomName}>
+                    {activeRoom.is_protected ? '🔒' : '#'} {activeRoom.name}
+                  </span>
+                  <p style={s.chatHeaderText}>
+                    {activeRoom.member_count} member{activeRoom.member_count !== 1 ? 's' : ''}
+                    {activeRoom.is_protected ? ' · protected room' : ' · open room'}
+                  </p>
+                </div>
+                <div style={s.chatHeaderMeta}>
+                  {activeRoom.is_protected && (
+                    <span style={s.protectedTag}>Password Protected</span>
+                  )}
+                  <span style={s.headerHint}>Esc to dashboard</span>
+                </div>
               </div>
               <div style={s.messages}>
                 {messages.length === 0 && (
-                  <p style={s.empty}>No messages yet. Say hello!</p>
+                  <div style={s.roomEmptyState}>
+                    <div style={s.roomEmptyOrb}>#</div>
+                    <span style={s.roomEmptyEyebrow}>Fresh Room</span>
+                    <h2 style={s.roomEmptyTitle}>No messages yet in {activeRoom.name}</h2>
+                    <p style={s.roomEmptyText}>
+                      Break the silence with a first update, question, or quick intro so everyone knows where to start.
+                    </p>
+                    <div style={s.roomEmptyMeta}>
+                      <div style={s.roomMetaCard}>
+                        <span style={s.roomMetaLabel}>Members</span>
+                        <strong style={s.roomMetaValue}>{activeRoom.member_count}</strong>
+                      </div>
+                      <div style={s.roomMetaCard}>
+                        <span style={s.roomMetaLabel}>Access</span>
+                        <strong style={s.roomMetaValue}>{activeRoom.is_protected ? 'Locked' : 'Open'}</strong>
+                      </div>
+                    </div>
+                  </div>
                 )}
                 {messages.map(m => {
                   if (m.isSystem) {
@@ -489,12 +515,15 @@ export default function Chat() {
                 )}
               </div>
               <form onSubmit={sendMessage} style={s.inputRow}>
-                <input
-                  style={s.input}
-                  value={msgInput}
-                  onChange={handleInputChange}
-                  placeholder={`Message ${activeRoom.is_protected ? '🔒' : '#'}${activeRoom.name}`}
-                />
+                <div style={s.composerWrap}>
+                  <input
+                    style={s.input}
+                    value={msgInput}
+                    onChange={handleInputChange}
+                    placeholder={`Message ${activeRoom.is_protected ? '🔒' : '#'}${activeRoom.name}`}
+                  />
+                  <span style={s.composerHint}>Press Enter to send</span>
+                </div>
                 <button type="submit" style={s.sendBtn} disabled={!msgInput.trim()}>Send</button>
               </form>
             </>
@@ -833,13 +862,106 @@ const s = {
     fontSize: 13,
     lineHeight: 1.55,
   },
-  chatHeader: { padding: '18px 24px', borderBottom: '1px solid rgba(17,24,39,0.08)', background: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 10 },
-  chatRoomName: { fontSize: 16, fontWeight: 700, color: '#333' },
+  chatHeader: {
+    padding: '20px 24px 18px',
+    borderBottom: '1px solid rgba(17,24,39,0.08)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(249,247,242,0.48))',
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 14,
+    flexWrap: 'wrap',
+  },
+  chatHeaderMain: { display: 'flex', flexDirection: 'column', gap: 6 },
+  chatRoomName: { fontSize: 28, fontWeight: 800, color: '#162233', lineHeight: 1 },
+  chatHeaderText: { margin: 0, fontSize: 14, color: '#627084' },
+  chatHeaderMeta: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   protectedTag: {
-    fontSize: 11, fontWeight: 600, color: '#764ba2', background: 'rgba(118,75,162,0.1)',
-    border: '1px solid rgba(118,75,162,0.25)', borderRadius: 4, padding: '2px 8px',
+    fontSize: 11, fontWeight: 700, color: '#764ba2', background: 'rgba(118,75,162,0.1)',
+    border: '1px solid rgba(118,75,162,0.25)', borderRadius: 999, padding: '5px 10px',
+  },
+  headerHint: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#718097',
+    background: 'rgba(17,24,39,0.05)',
+    border: '1px solid rgba(17,24,39,0.08)',
+    borderRadius: 999,
+    padding: '5px 10px',
   },
   messages: { flex: 1, overflowY: 'auto', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 12, background: 'linear-gradient(180deg, rgba(250,249,246,0.82), rgba(244,247,251,0.92))' },
+  roomEmptyState: {
+    margin: 'auto',
+    width: '100%',
+    maxWidth: 560,
+    padding: '32px 30px 28px',
+    borderRadius: 28,
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.92), rgba(246,239,228,0.92))',
+    border: '1px solid rgba(24,38,58,0.08)',
+    boxShadow: '0 22px 46px rgba(9, 20, 36, 0.08)',
+    textAlign: 'center',
+  },
+  roomEmptyOrb: {
+    width: 68,
+    height: 68,
+    margin: '0 auto',
+    borderRadius: 22,
+    display: 'grid',
+    placeItems: 'center',
+    fontSize: 28,
+    fontWeight: 800,
+    color: '#3559a5',
+    background: 'linear-gradient(135deg, #eef2ff, #f4eafe)',
+    boxShadow: '0 18px 32px rgba(91,119,234,0.18)',
+  },
+  roomEmptyEyebrow: {
+    display: 'block',
+    marginTop: 18,
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    color: '#6f7b91',
+  },
+  roomEmptyTitle: {
+    margin: '12px 0 12px',
+    fontSize: 'clamp(1.8rem, 3vw, 2.6rem)',
+    lineHeight: 1.05,
+    color: '#162233',
+  },
+  roomEmptyText: {
+    margin: 0,
+    fontSize: 15,
+    lineHeight: 1.7,
+    color: '#58677b',
+  },
+  roomEmptyMeta: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 12,
+    marginTop: 24,
+  },
+  roomMetaCard: {
+    padding: '14px 14px 12px',
+    borderRadius: 18,
+    background: 'rgba(17,24,39,0.04)',
+    border: '1px solid rgba(17,24,39,0.07)',
+  },
+  roomMetaLabel: {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    color: '#758196',
+  },
+  roomMetaValue: {
+    display: 'block',
+    marginTop: 10,
+    fontSize: 20,
+    color: '#162233',
+    fontWeight: 800,
+  },
   msgRow: { display: 'flex', width: '100%' },
   msg: { display: 'flex', flexDirection: 'column', maxWidth: '70%' },
   msgOther: { alignItems: 'flex-start', marginRight: 'auto' },
@@ -857,10 +979,17 @@ const s = {
   typingDots: { display: 'inline-flex', gap: 3, alignItems: 'center' },
   typingText: { fontSize: 12, color: '#888', fontStyle: 'italic' },
   inputRow: { display: 'flex', gap: 10, padding: '14px 24px 18px', borderTop: '1px solid rgba(17,24,39,0.08)', background: 'rgba(255,255,255,0.7)' },
-  input: { flex: 1, border: '1px solid #d6dde8', borderRadius: 12, padding: '12px 14px', fontSize: 14, outline: 'none', background: '#fffdf9' },
+  composerWrap: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  input: { flex: 1, border: '1px solid #d6dde8', borderRadius: 14, padding: '13px 14px', fontSize: 14, outline: 'none', background: '#fffdf9', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75)' },
+  composerHint: { fontSize: 12, color: '#7a879b', paddingLeft: 2 },
   sendBtn: {
     background: 'linear-gradient(135deg, #5b77ea, #7d58b7)', color: '#fff', border: 'none',
-    borderRadius: 12, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 700,
+    borderRadius: 14, padding: '0 22px', minHeight: 50, cursor: 'pointer', fontSize: 14, fontWeight: 700,
   },
   // Modals
   overlay: {
