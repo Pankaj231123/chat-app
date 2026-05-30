@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { listRooms, createRoom, joinRoom, getMessages } from '../api/rooms'
 
 export default function Chat() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [user, setUser] = useState(null)
   const [rooms, setRooms] = useState([])
   const [activeRoom, setActiveRoom] = useState(null)
@@ -29,6 +30,9 @@ export default function Chat() {
   const [showJoinPwd, setShowJoinPwd] = useState(false)
   const [joinError, setJoinError] = useState('')
   const [joining, setJoining] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
+  const isNarrow = viewportWidth < 1180
+  const isMobile = viewportWidth < 900
 
   useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -43,6 +47,47 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(typingTimerRef.current)
+      wsRef.current?.close()
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleResize() {
+      setViewportWidth(window.innerWidth)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    const roomId = searchParams.get('room')
+    if (!roomId) {
+      if (activeRoom) closeActiveRoom(false)
+      return
+    }
+    if (rooms.length === 0) return
+
+    const targetRoom = rooms.find(room => String(room.id) === roomId)
+    if (!targetRoom) {
+      closeActiveRoom(false)
+      setSearchParams({}, { replace: true })
+      return
+    }
+    if (activeRoom?.id === targetRoom.id) return
+
+    if (targetRoom.is_protected && !targetRoom.is_member) {
+      closeActiveRoom(false)
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    openRoom(targetRoom, true, false)
+  }, [searchParams, rooms, activeRoom])
 
   async function fetchRooms() {
     try {
@@ -60,14 +105,31 @@ export default function Chat() {
   }
 
   // skipJoin=true when the caller already called joinRoom (e.g. after join password modal)
-  async function openRoom(room, skipJoin = false) {
+  function closeActiveRoom(updateHistory = true) {
+    clearTimeout(typingTimerRef.current)
+    wsRef.current?.close()
+    wsRef.current = null
+    setActiveRoom(null)
+    setMessages([])
+    setMsgInput('')
+    setTypingUsers([])
+    if (updateHistory) {
+      setSearchParams({})
+    }
+  }
+
+  async function openRoom(room, skipJoin = false, updateHistory = true) {
     if (activeRoom?.id === room.id) return
     clearTimeout(typingTimerRef.current)
     wsRef.current?.close()
+    wsRef.current = null
     setActiveRoom(room)
     setMessages([])
     setMsgInput('')
     setTypingUsers([])
+    if (updateHistory) {
+      setSearchParams({ room: String(room.id) })
+    }
 
     if (!skipJoin) {
       try { await joinRoom(room.id) } catch { /* already a member */ }
@@ -193,13 +255,17 @@ export default function Chat() {
   }
 
   function logout() {
-    wsRef.current?.close()
+    closeActiveRoom(false)
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     navigate('/login')
   }
 
   if (!user) return null
+
+  const joinedRooms = rooms.filter(room => room.is_member)
+  const quickRooms = (joinedRooms.length > 0 ? joinedRooms : rooms).slice(0, 3)
+  const protectedCount = rooms.filter(room => room.is_protected).length
 
   return (
     <div style={s.page}>
@@ -229,16 +295,16 @@ export default function Chat() {
         </div>
       </div>
 
-      <div style={s.body}>
+      <div style={{ ...s.body, ...(isMobile ? s.bodyMobile : null) }}>
         {/* Sidebar */}
-        <aside style={s.sidebar}>
+        <aside style={{ ...s.sidebar, ...(isMobile ? s.sidebarMobile : null) }}>
           <div style={s.sidebarHeader}>
             <span style={s.sidebarTitle}>Rooms</span>
             <button onClick={() => setShowCreateModal(true)} style={s.createBtn} title="Create room">
               + New
             </button>
           </div>
-          <div style={s.roomList}>
+          <div style={{ ...s.roomList, ...(isMobile ? s.roomListMobile : null) }}>
             {rooms.length === 0 && (
               <p style={s.empty}>No rooms yet. Create one!</p>
             )}
@@ -247,7 +313,11 @@ export default function Chat() {
                 key={r.id}
                 className="room-btn"
                 onClick={() => handleRoomClick(r)}
-                style={{ ...s.roomItem, ...(activeRoom?.id === r.id ? s.roomItemActive : {}) }}
+                style={{
+                  ...s.roomItem,
+                  ...(activeRoom?.id === r.id ? s.roomItemActive : {}),
+                  ...(isMobile ? s.roomItemMobile : null),
+                }}
               >
                 <div style={s.roomItemTop}>
                   <span style={s.roomName}>
@@ -262,14 +332,80 @@ export default function Chat() {
         </aside>
 
         {/* Chat area */}
-        <main style={s.main}>
+        <main style={{ ...s.main, ...(isMobile ? s.mainMobile : null) }}>
           {!activeRoom ? (
-            <div style={s.placeholder}>
-              <div style={s.placeholderIcon}>💬</div>
-              <p style={s.placeholderText}>Select a room to start chatting</p>
-              <button onClick={() => setShowCreateModal(true)} style={s.createBtnLarge}>
-                + Create a Room
-              </button>
+            <div style={{ ...s.placeholder, ...(isNarrow ? s.placeholderNarrow : null), ...(isMobile ? s.placeholderMobile : null) }}>
+              <section style={s.emptyHeroCard}>
+                <div style={s.emptyHeroIcon}>💬</div>
+                <span style={s.emptyEyebrow}>Workspace Ready</span>
+                <h1 style={s.emptyTitle}>Choose where the conversation starts.</h1>
+                <p style={s.placeholderText}>
+                  Open one of your rooms, or create a new space for team updates, private threads, or quick drop-ins.
+                </p>
+
+                <div style={{ ...s.emptyStats, ...(isNarrow ? s.emptyStatsNarrow : null) }}>
+                  <div style={s.statCard}>
+                    <span style={s.statLabel}>Joined Rooms</span>
+                    <strong style={s.statValue}>{joinedRooms.length}</strong>
+                  </div>
+                  <div style={s.statCard}>
+                    <span style={s.statLabel}>Protected</span>
+                    <strong style={s.statValue}>{protectedCount}</strong>
+                  </div>
+                  <div style={s.statCard}>
+                    <span style={s.statLabel}>Total Rooms</span>
+                    <strong style={s.statValue}>{rooms.length}</strong>
+                  </div>
+                </div>
+
+                <div style={{ ...s.emptyActions, ...(isMobile ? s.emptyActionsMobile : null) }}>
+                  <button onClick={() => setShowCreateModal(true)} style={s.createBtnLarge}>
+                    + Create a Room
+                  </button>
+                  {quickRooms[0] && (
+                    <button onClick={() => handleRoomClick(quickRooms[0])} style={s.secondaryActionBtn}>
+                      Open {quickRooms[0].name}
+                    </button>
+                  )}
+                </div>
+              </section>
+
+              <aside style={s.previewPanel}>
+                <div style={s.previewHeader}>
+                  <span style={s.previewTitle}>Jump Back In</span>
+                  <span style={s.previewMeta}>{quickRooms.length} shortcut{quickRooms.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                {quickRooms.length === 0 ? (
+                  <div style={s.previewEmptyCard}>
+                    <strong style={s.previewEmptyTitle}>No rooms yet</strong>
+                    <p style={s.previewEmptyText}>
+                      Create your first room to start organizing conversations.
+                    </p>
+                  </div>
+                ) : (
+                  quickRooms.map(room => (
+                    <button
+                      key={room.id}
+                      onClick={() => handleRoomClick(room)}
+                      style={s.previewRoomCard}
+                    >
+                      <div style={s.previewRoomTop}>
+                        <span style={s.previewRoomName}>{room.is_protected ? '🔒' : '#'} {room.name}</span>
+                        {room.is_member && <span style={s.previewRoomBadge}>joined</span>}
+                      </div>
+                      <p style={s.previewRoomText}>
+                        {room.member_count} member{room.member_count !== 1 ? 's' : ''} in this room
+                        {room.is_protected ? ' · password required for new members' : ' · open to members instantly'}
+                      </p>
+                    </button>
+                  ))
+                )}
+
+                <div style={s.previewNote}>
+                  Protected rooms help keep sensitive discussions gated without leaving the app.
+                </div>
+              </aside>
             </div>
           ) : (
             <>
@@ -451,58 +587,201 @@ export default function Chat() {
 }
 
 const s = {
-  page: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#f0f2f5', fontFamily: "'Segoe UI', system-ui, sans-serif" },
+  page: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    background: 'radial-gradient(circle at top left, #2f6bff 0%, rgba(47,107,255,0) 28%), linear-gradient(135deg, #071626 0%, #0f2840 48%, #6f6340 155%)',
+    fontFamily: "'Segoe UI', system-ui, sans-serif",
+  },
   header: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0 24px', height: 60, flexShrink: 0,
-    background: 'linear-gradient(135deg, #667eea, #764ba2)',
-    color: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    padding: '0 26px', height: 66, flexShrink: 0,
+    background: 'linear-gradient(135deg, rgba(93,121,240,0.96), rgba(120,81,169,0.9))',
+    color: '#fff', boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
+    backdropFilter: 'blur(12px)',
   },
   logo: { fontSize: 20, fontWeight: 700 },
   userInfo: { display: 'flex', alignItems: 'center', gap: 16 },
-  username: { fontSize: 14 },
+  username: { fontSize: 14, fontWeight: 600 },
   logoutBtn: {
     background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)',
-    borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 13,
+    borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 13,
   },
-  body: { display: 'flex', flex: 1, overflow: 'hidden' },
-  sidebar: { width: 240, background: '#1e1e2e', display: 'flex', flexDirection: 'column', flexShrink: 0 },
-  sidebarHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 14px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)' },
+  body: { display: 'flex', flex: 1, overflow: 'hidden', padding: 18, gap: 18, minHeight: 0 },
+  bodyMobile: { flexDirection: 'column', padding: 14, gap: 14, minHeight: 0 },
+  sidebar: {
+    width: 270,
+    background: 'rgba(17, 24, 39, 0.88)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 24,
+    display: 'flex',
+    flexDirection: 'column',
+    flexShrink: 0,
+    overflow: 'hidden',
+    boxShadow: '0 18px 40px rgba(4, 13, 25, 0.22)',
+    backdropFilter: 'blur(12px)',
+  },
+  sidebarMobile: { width: '100%', maxHeight: 240 },
+  sidebarHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 16px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)' },
   sidebarTitle: { color: '#a0a8c0', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 },
   createBtn: {
-    background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none',
-    borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+    background: 'linear-gradient(135deg, #5b77ea, #7d58b7)', color: '#fff', border: 'none',
+    borderRadius: 10, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700,
   },
-  roomList: { flex: 1, overflowY: 'auto', padding: '8px 6px' },
+  roomList: { flex: 1, overflowY: 'auto', padding: '10px 8px 12px' },
+  roomListMobile: { display: 'flex', gap: 8, padding: 10, overflowX: 'auto', overflowY: 'hidden' },
   roomItem: {
     display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%',
-    background: 'transparent', border: 'none', borderRadius: 6, padding: '8px 10px',
-    cursor: 'pointer', textAlign: 'left', marginBottom: 2, transition: 'background .15s',
+    background: 'rgba(255,255,255,0.02)', border: '1px solid transparent', borderRadius: 14, padding: '10px 12px',
+    cursor: 'pointer', textAlign: 'left', marginBottom: 6, transition: 'background .15s, border-color .15s, transform .15s',
   },
-  roomItemActive: { background: 'rgba(102,126,234,0.3)' },
+  roomItemMobile: { minWidth: 200, marginBottom: 0 },
+  roomItemActive: { background: 'rgba(91,119,234,0.18)', borderColor: 'rgba(121,148,255,0.28)', transform: 'translateY(-1px)' },
   roomItemTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 },
-  roomName: { color: '#c8d0e8', fontSize: 14, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  roomName: { color: '#e5ecff', fontSize: 14, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   memberBadge: {
     fontSize: 9, fontWeight: 700, color: '#48bb78', background: 'rgba(72,187,120,0.15)',
-    border: '1px solid rgba(72,187,120,0.3)', borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+    border: '1px solid rgba(72,187,120,0.3)', borderRadius: 999, padding: '2px 6px', flexShrink: 0,
   },
-  memberCount: { color: '#5a6070', fontSize: 11, marginTop: 2 },
+  memberCount: { color: '#8f9ab2', fontSize: 11, marginTop: 4 },
   empty: { color: '#5a6070', fontSize: 13, padding: '12px 10px' },
-  main: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fff' },
-  placeholder: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  placeholderIcon: { fontSize: 48 },
-  placeholderText: { color: '#888', fontSize: 16 },
-  createBtnLarge: {
-    background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none',
-    borderRadius: 8, padding: '10px 24px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
+  main: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    minWidth: 0,
+    background: 'linear-gradient(180deg, rgba(249,247,242,0.96), rgba(255,255,255,0.92))',
+    border: '1px solid rgba(255,255,255,0.55)',
+    borderRadius: 28,
+    boxShadow: '0 22px 54px rgba(4, 13, 25, 0.16)',
+    backdropFilter: 'blur(14px)',
   },
-  chatHeader: { padding: '14px 20px', borderBottom: '1px solid #eee', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 10 },
+  mainMobile: { minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' },
+  placeholder: {
+    flex: 1,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 0.9fr)',
+    gap: 22,
+    padding: 26,
+    minHeight: 0,
+  },
+  placeholderNarrow: { gridTemplateColumns: '1fr' },
+  placeholderMobile: { padding: 16, gap: 16, minHeight: 'max-content' },
+  emptyHeroCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    padding: '34px 34px 30px',
+    borderRadius: 28,
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(247,240,228,0.96))',
+    border: '1px solid rgba(24,38,58,0.08)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)',
+  },
+  emptyHeroIcon: {
+    width: 62,
+    height: 62,
+    borderRadius: 18,
+    display: 'grid',
+    placeItems: 'center',
+    fontSize: 28,
+    background: 'linear-gradient(135deg, #eef2ff, #f5e8ff)',
+    boxShadow: '0 16px 32px rgba(90, 112, 182, 0.2)',
+  },
+  emptyEyebrow: {
+    marginTop: 22,
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    color: '#6f7b91',
+  },
+  emptyTitle: {
+    margin: '12px 0 14px',
+    fontSize: 'clamp(2rem, 4vw, 3.4rem)',
+    lineHeight: 0.98,
+    color: '#142132',
+    fontWeight: 800,
+    maxWidth: 560,
+  },
+  placeholderText: { color: '#536173', fontSize: 16, lineHeight: 1.7, margin: 0, maxWidth: 600 },
+  emptyStats: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginTop: 28 },
+  emptyStatsNarrow: { gridTemplateColumns: '1fr' },
+  statCard: {
+    padding: '16px 16px 14px',
+    borderRadius: 18,
+    background: 'rgba(18, 33, 52, 0.05)',
+    border: '1px solid rgba(18, 33, 52, 0.08)',
+  },
+  statLabel: { display: 'block', fontSize: 12, fontWeight: 700, color: '#6b778c', textTransform: 'uppercase', letterSpacing: '0.06em' },
+  statValue: { display: 'block', marginTop: 10, fontSize: 28, color: '#142132', lineHeight: 1, fontWeight: 800 },
+  emptyActions: { display: 'flex', gap: 12, marginTop: 26, flexWrap: 'wrap' },
+  emptyActionsMobile: { flexDirection: 'column', alignItems: 'stretch' },
+  createBtnLarge: {
+    background: 'linear-gradient(135deg, #5b77ea, #7d58b7)', color: '#fff', border: 'none',
+    borderRadius: 12, padding: '13px 24px', cursor: 'pointer', fontSize: 15, fontWeight: 700,
+    boxShadow: '0 14px 24px rgba(91,119,234,0.24)',
+  },
+  secondaryActionBtn: {
+    background: 'rgba(255,255,255,0.82)', color: '#203147', border: '1px solid rgba(20,33,50,0.12)',
+    borderRadius: 12, padding: '13px 18px', cursor: 'pointer', fontSize: 15, fontWeight: 700,
+  },
+  previewPanel: {
+    padding: 24,
+    borderRadius: 28,
+    background: 'linear-gradient(180deg, rgba(20, 32, 47, 0.96), rgba(27, 39, 57, 0.94))',
+    border: '1px solid rgba(255,255,255,0.08)',
+    color: '#f4f7fb',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    boxShadow: '0 22px 48px rgba(5, 12, 25, 0.18)',
+  },
+  previewHeader: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  previewTitle: { fontSize: 15, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#f8d588' },
+  previewMeta: { fontSize: 12, color: 'rgba(244,247,251,0.56)' },
+  previewEmptyCard: {
+    padding: '18px 18px 16px',
+    borderRadius: 20,
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.08)',
+  },
+  previewEmptyTitle: { display: 'block', fontSize: 16, color: '#fff' },
+  previewEmptyText: { margin: '8px 0 0', color: 'rgba(244,247,251,0.72)', fontSize: 14, lineHeight: 1.6 },
+  previewRoomCard: {
+    width: '100%',
+    textAlign: 'left',
+    padding: '18px 18px 16px',
+    borderRadius: 20,
+    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#fff',
+    cursor: 'pointer',
+  },
+  previewRoomTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  previewRoomName: { fontSize: 21, fontWeight: 700, lineHeight: 1.1 },
+  previewRoomBadge: {
+    fontSize: 10, fontWeight: 800, color: '#48bb78', background: 'rgba(72,187,120,0.12)',
+    border: '1px solid rgba(72,187,120,0.24)', borderRadius: 999, padding: '4px 8px',
+  },
+  previewRoomText: { margin: '10px 0 0', fontSize: 14, lineHeight: 1.6, color: 'rgba(244,247,251,0.72)' },
+  previewNote: {
+    marginTop: 'auto',
+    padding: '14px 16px',
+    borderRadius: 16,
+    background: 'rgba(248,213,136,0.08)',
+    color: '#f8d588',
+    fontSize: 13,
+    lineHeight: 1.55,
+  },
+  chatHeader: { padding: '18px 24px', borderBottom: '1px solid rgba(17,24,39,0.08)', background: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 10 },
   chatRoomName: { fontSize: 16, fontWeight: 700, color: '#333' },
   protectedTag: {
     fontSize: 11, fontWeight: 600, color: '#764ba2', background: 'rgba(118,75,162,0.1)',
     border: '1px solid rgba(118,75,162,0.25)', borderRadius: 4, padding: '2px 8px',
   },
-  messages: { flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 },
+  messages: { flex: 1, overflowY: 'auto', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 12, background: 'linear-gradient(180deg, rgba(250,249,246,0.82), rgba(244,247,251,0.92))' },
   msgRow: { display: 'flex', width: '100%' },
   msg: { display: 'flex', flexDirection: 'column', maxWidth: '70%' },
   msgOther: { alignItems: 'flex-start', marginRight: 'auto' },
@@ -514,16 +793,16 @@ const s = {
   systemMsg: { display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', userSelect: 'none' },
   systemMsgLine: { flex: 1, height: 1, background: '#e8e8e8' },
   systemMsgText: { fontSize: 12, color: '#aaa', whiteSpace: 'nowrap', fontStyle: 'italic' },
-  msgBubble: { background: '#f0f2f5', borderRadius: '0 12px 12px 12px', padding: '8px 14px', fontSize: 14, color: '#222', wordBreak: 'break-word' },
+  msgBubble: { background: '#edf1f6', borderRadius: '0 16px 16px 16px', padding: '10px 14px', fontSize: 14, color: '#222', wordBreak: 'break-word', boxShadow: '0 8px 20px rgba(14, 20, 35, 0.04)' },
   msgBubbleOwn: { background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', borderRadius: '12px 0 12px 12px' },
-  typingBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 20px 0', minHeight: 24 },
+  typingBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 24px 0', minHeight: 24, background: 'rgba(255,255,255,0.35)' },
   typingDots: { display: 'inline-flex', gap: 3, alignItems: 'center' },
   typingText: { fontSize: 12, color: '#888', fontStyle: 'italic' },
-  inputRow: { display: 'flex', gap: 10, padding: '10px 20px 12px', borderTop: '1px solid #eee', background: '#fafafa' },
-  input: { flex: 1, border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', fontSize: 14, outline: 'none' },
+  inputRow: { display: 'flex', gap: 10, padding: '14px 24px 18px', borderTop: '1px solid rgba(17,24,39,0.08)', background: 'rgba(255,255,255,0.7)' },
+  input: { flex: 1, border: '1px solid #d6dde8', borderRadius: 12, padding: '12px 14px', fontSize: 14, outline: 'none', background: '#fffdf9' },
   sendBtn: {
-    background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none',
-    borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
+    background: 'linear-gradient(135deg, #5b77ea, #7d58b7)', color: '#fff', border: 'none',
+    borderRadius: 12, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 700,
   },
   // Modals
   overlay: {
