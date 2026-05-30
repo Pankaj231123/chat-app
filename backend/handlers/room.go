@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,10 +15,6 @@ import (
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
 
 // hub holds active WebSocket connections per room
 type hub struct {
@@ -70,8 +67,33 @@ func (h *hub) broadcastExcept(roomID int, exclude *websocket.Conn, payload any) 
 
 // RoomHandler handles all room and message endpoints.
 type RoomHandler struct {
-	DB     *sql.DB
-	Cipher *crypto.Cipher
+	DB             *sql.DB
+	Cipher         *crypto.Cipher
+	allowedOrigins map[string]struct{}
+}
+
+func (h *RoomHandler) SetAllowedOrigins(origins []string) {
+	if len(origins) == 0 {
+		h.allowedOrigins = nil
+		return
+	}
+
+	allowed := make(map[string]struct{}, len(origins))
+	for _, origin := range origins {
+		allowed[origin] = struct{}{}
+	}
+	h.allowedOrigins = allowed
+}
+
+func (h *RoomHandler) isOriginAllowed(origin string) bool {
+	if origin == "" {
+		return true
+	}
+	if len(h.allowedOrigins) == 0 {
+		return false
+	}
+	_, ok := h.allowedOrigins[strings.TrimSpace(origin)]
+	return ok
 }
 
 // CreateRoom POST /api/rooms
@@ -283,6 +305,14 @@ func (h *RoomHandler) GetMessages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid room id"})
 		return
 	}
+	userID := c.GetInt("user_id")
+
+	var isMember bool
+	h.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM room_members WHERE room_id=$1 AND user_id=$2)`, roomID, userID).Scan(&isMember) //nolint: errcheck
+	if !isMember {
+		c.JSON(http.StatusForbidden, gin.H{"error": "join the room first"})
+		return
+	}
 
 	limit := 50
 	if l := c.Query("limit"); l != "" {
@@ -377,7 +407,7 @@ func (h *RoomHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	msg.Content = body.Content // broadcast/respond with plaintext
+	msg.Content = body.Content                                                          // broadcast/respond with plaintext
 	h.DB.QueryRow(`SELECT username FROM users WHERE id=$1`, userID).Scan(&msg.Username) //nolint: errcheck
 
 	globalHub.broadcast(roomID, msg)
@@ -399,6 +429,12 @@ func (h *RoomHandler) WebSocketChat(c *gin.Context) {
 	if !isMember {
 		c.JSON(http.StatusForbidden, gin.H{"error": "join the room first"})
 		return
+	}
+
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return h.isOriginAllowed(r.Header.Get("Origin"))
+		},
 	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
