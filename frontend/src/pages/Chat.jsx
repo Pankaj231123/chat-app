@@ -266,6 +266,7 @@ export default function Chat() {
   const joinedRooms = rooms.filter(room => room.is_member)
   const quickRooms = (joinedRooms.length > 0 ? joinedRooms : rooms).slice(0, 3)
   const protectedCount = rooms.filter(room => room.is_protected).length
+  const isProtectedDraft = createPassword.trim().length > 0
 
   return (
     <div style={s.page}>
@@ -481,13 +482,34 @@ export default function Chat() {
       {/* Create Room Modal */}
       {showCreateModal && (
         <div style={s.overlay} onClick={closeCreateModal}>
-          <div style={s.modal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalHeader}>
-              <span style={s.modalTitle}>Create a Room</span>
-              <button onClick={closeCreateModal} style={s.closeBtn}>✕</button>
-            </div>
-            <form onSubmit={handleCreateRoom} style={s.modalBody}>
+          <div style={{ ...s.modal, ...s.createModal }} onClick={e => e.stopPropagation()}>
+            <div style={{ ...s.modalHeader, ...s.createModalHeader }}>
               <div>
+                <div style={s.modalEyebrow}>New Workspace</div>
+                <span style={{ ...s.modalTitle, ...s.createModalTitle }}>Create a Room</span>
+              </div>
+              <button onClick={closeCreateModal} style={{ ...s.closeBtn, ...s.createCloseBtn }}>✕</button>
+            </div>
+            <form onSubmit={handleCreateRoom} style={{ ...s.modalBody, ...s.createModalBody }}>
+              <div style={s.createModalIntro}>
+                <p style={s.createLead}>
+                  Start a fresh conversation space for your team, side project, or private discussion.
+                </p>
+                <div style={s.modeCards}>
+                  <div style={{ ...s.modeCard, ...(isProtectedDraft ? s.modeCardMuted : s.modeCardActive) }}>
+                    <span style={s.modeCardLabel}>Public Room</span>
+                    <strong style={s.modeCardTitle}>Anyone can join instantly</strong>
+                    <p style={s.modeCardText}>Best for general chat, open planning, and shared updates.</p>
+                  </div>
+                  <div style={{ ...s.modeCard, ...(isProtectedDraft ? s.modeCardActive : s.modeCardMuted) }}>
+                    <span style={s.modeCardLabel}>Protected Room</span>
+                    <strong style={s.modeCardTitle}>Require a password</strong>
+                    <p style={s.modeCardText}>Use this for focused workstreams or more private conversations.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div style={s.fieldBlock}>
                 <label style={s.label}>Room Name</label>
                 <input
                   style={s.modalInput}
@@ -497,8 +519,10 @@ export default function Chat() {
                   maxLength={100}
                   autoFocus
                 />
+                <p style={s.fieldHint}>Keep it short and recognizable so people can find it quickly.</p>
               </div>
-              <div>
+
+              <div style={s.fieldBlock}>
                 <label style={s.label}>
                   Password <span style={s.optionalTag}>(optional — leave blank for public room)</span>
                 </label>
@@ -520,11 +544,11 @@ export default function Chat() {
                     {showCreatePwd ? '🙈' : '👁'}
                   </button>
                 </div>
-                {createPassword && (
-                  <p style={s.hintText}>
-                    🔒 This room will be password protected
-                  </p>
-                )}
+                <p style={{ ...s.hintText, ...(isProtectedDraft ? s.hintTextActive : null) }}>
+                  {isProtectedDraft
+                    ? 'Locked room enabled. New members will need this password to join.'
+                    : 'No password means this room stays public for signed-in members.'}
+                </p>
               </div>
               {createError && <p style={s.errorText}>{createError}</p>}
               <div style={s.modalActions}>
@@ -811,35 +835,114 @@ const s = {
     backdropFilter: 'blur(2px)',
   },
   modal: {
-    background: '#fff', borderRadius: 12, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+    background: '#fff', borderRadius: 22, width: 420, boxShadow: '0 28px 80px rgba(0,0,0,0.24)',
     overflow: 'hidden',
+  },
+  createModal: {
+    width: 560,
+    maxWidth: 'calc(100vw - 28px)',
+    background: 'linear-gradient(180deg, #f9f6ef, #ffffff)',
+    border: '1px solid rgba(17,24,39,0.08)',
   },
   modalHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '18px 20px', borderBottom: '1px solid #eee',
     background: 'linear-gradient(135deg, #667eea, #764ba2)',
   },
+  createModalHeader: {
+    padding: '22px 24px 18px',
+    borderBottom: '1px solid rgba(17,24,39,0.08)',
+    background: 'linear-gradient(135deg, rgba(91,119,234,0.18), rgba(125,88,183,0.14))',
+  },
+  modalEyebrow: {
+    marginBottom: 6,
+    color: '#6e7b92',
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+  },
   modalTitle: { fontSize: 16, fontWeight: 700, color: '#fff' },
+  createModalTitle: { color: '#162233', fontSize: 22, fontWeight: 800 },
+  createModalBody: { padding: 24, gap: 18 },
   closeBtn: { background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 },
+  createCloseBtn: { color: '#546277' },
   modalBody: { padding: 24, display: 'flex', flexDirection: 'column', gap: 16 },
+  createModalIntro: {
+    padding: '2px 0 2px',
+  },
+  createLead: {
+    margin: 0,
+    fontSize: 15,
+    lineHeight: 1.7,
+    color: '#49586d',
+  },
+  modeCards: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 12,
+    marginTop: 16,
+  },
+  modeCard: {
+    padding: '16px 16px 14px',
+    borderRadius: 18,
+    border: '1px solid rgba(17,24,39,0.08)',
+    textAlign: 'left',
+  },
+  modeCardActive: {
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(238,242,255,0.92))',
+    boxShadow: '0 12px 24px rgba(91,119,234,0.12)',
+  },
+  modeCardMuted: {
+    background: 'rgba(17,24,39,0.03)',
+  },
+  modeCardLabel: {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 800,
+    color: '#6e7b92',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+  },
+  modeCardTitle: {
+    display: 'block',
+    marginTop: 10,
+    fontSize: 16,
+    color: '#162233',
+    lineHeight: 1.2,
+  },
+  modeCardText: {
+    margin: '8px 0 0',
+    fontSize: 13,
+    lineHeight: 1.55,
+    color: '#5d6a7f',
+  },
   label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 6 },
   optionalTag: { fontWeight: 400, color: '#999', fontSize: 11 },
+  fieldBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 0,
+  },
   modalInput: {
     width: '100%', boxSizing: 'border-box',
-    border: '1.5px solid #ddd', borderRadius: 8, padding: '10px 14px',
+    border: '1.5px solid #d8dee7', borderRadius: 12, padding: '12px 14px',
     fontSize: 15, outline: 'none', transition: 'border-color .2s',
+    background: 'rgba(255,255,255,0.9)',
   },
-  pwdRow: { display: 'flex', alignItems: 'center', border: '1.5px solid #ddd', borderRadius: 8, overflow: 'hidden' },
-  hintText: { fontSize: 12, color: '#764ba2', margin: '6px 0 0', fontWeight: 500 },
+  pwdRow: { display: 'flex', alignItems: 'center', border: '1.5px solid #d8dee7', borderRadius: 12, overflow: 'hidden', background: 'rgba(255,255,255,0.9)' },
+  fieldHint: { fontSize: 12, color: '#7a879b', margin: '8px 0 0', lineHeight: 1.5 },
+  hintText: { fontSize: 12, color: '#67758b', margin: '8px 0 0', fontWeight: 500, lineHeight: 1.5 },
+  hintTextActive: { color: '#764ba2' },
   joinSubtitle: { fontSize: 14, color: '#555', margin: 0 },
   errorText: { color: '#e53e3e', fontSize: 13, margin: 0 },
   modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
   cancelBtn: {
-    background: '#f0f2f5', color: '#555', border: 'none',
-    borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontSize: 14,
+    background: '#eef2f6', color: '#465468', border: 'none',
+    borderRadius: 10, padding: '11px 18px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
   },
   submitBtn: {
-    background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none',
-    borderRadius: 8, padding: '9px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
+    background: 'linear-gradient(135deg, #5b77ea, #7d58b7)', color: '#fff', border: 'none',
+    borderRadius: 10, padding: '11px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 700,
   },
 }
