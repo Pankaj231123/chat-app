@@ -1,81 +1,68 @@
-# Chat App
+# 💬 Real-Time Chat Application
 
-Real-time chat app with a Go API, React frontend, JWT auth, password-protected rooms, encrypted message storage, and email-based password reset.
+A full-stack real-time chat application built with Go, React, PostgreSQL, and WebSocket.
 
-## Features
+## 🚀 Features
 
-- Real-time messaging over WebSockets
-- AES-256-GCM encryption before messages are stored in PostgreSQL
+- Real-time messaging using WebSocket
+- User authentication with JWT
+- Persistent message history with PostgreSQL
 - Public and password-protected chat rooms
-- JWT-based authentication
-- Password reset flow with expiring one-time tokens
-- Room membership tracking
-- Typing indicators and join events
-- Message history endpoint with cursor-style pagination
+- Encrypted message storage
+- Password reset flow
+- Clean React frontend
+- RESTful API for authentication and room management
 
-## Stack
+## 🛠️ Tech Stack
 
-### Backend
+**Backend:**
 
-- Go
+- Go (Golang)
 - Gin
+- WebSocket (`gorilla/websocket`)
 - PostgreSQL
-- `gorilla/websocket`
-- `golang-jwt/jwt/v5`
-- `bcrypt`
+- JWT Authentication
+- Bcrypt
 
-### Frontend
+**Frontend:**
 
-- React 18
-- Vite 5
-- React Router 6
-- Tailwind Vite plugin
+- React.js
+- React Router
+- Vite
+- WebSocket client
+- REST API integration
 
-## Project Structure
+## 📐 Architecture
 
 ```text
-chat-app/
-├── backend/
-│   ├── config/
-│   ├── crypto/
-│   ├── db/
-│   ├── handlers/
-│   ├── mailer/
-│   ├── middleware/
-│   ├── models/
-│   ├── .env.example
-│   └── main.go
-├── frontend/
-│   ├── src/
-│   │   ├── api/
-│   │   └── pages/
-│   ├── .env.example
-│   └── vite.config.js
-└── README.md
+React Frontend ←→ WebSocket / REST API ←→ Go Backend ←→ PostgreSQL
 ```
 
-## Prerequisites
+## 🏃 How to Run
 
-- Go 1.21+
-- Node.js 18+
-- PostgreSQL
-
-## Setup
-
-### 1. Clone
+**Backend:**
 
 ```bash
-git clone <repo-url>
-cd chat-app
+cd backend
+go mod download
+go run main.go
 ```
 
-### 2. Configure the backend
+**Frontend:**
 
 ```bash
-cp backend/.env.example backend/.env
+cd frontend
+npm install
+npm start
 ```
 
-Important backend variables:
+## ⚙️ Environment Setup
+
+**Backend:**
+
+Create `backend/.env` from `backend/.env.example`.
+
+Important variables:
 
 ```env
 PORT=8081
@@ -88,134 +75,21 @@ JWT_SECRET=replace_with_a_long_random_secret
 MESSAGE_ENC_KEY=your_64_char_hex_key
 APP_URL=http://localhost:5173
 CORS_ALLOWED_ORIGINS=http://localhost:5173
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USER=
-SMTP_PASS=
-SMTP_FROM=
 ```
 
-Notes:
+**Frontend:**
 
-- `MESSAGE_ENC_KEY` must be a 64-character hex string. Generate one with `openssl rand -hex 32`.
-- If `SMTP_HOST` is blank, reset links are still generated and logged by the backend.
-- `APP_URL` is used to build password reset links sent to the frontend.
-- `CORS_ALLOWED_ORIGINS` accepts a comma-separated list of frontend origins for HTTP and WebSocket access. If omitted, it falls back to `APP_URL`.
-
-### 3. Configure the frontend
-
-```bash
-cp frontend/.env.example frontend/.env
-```
-
-Frontend variable:
+Create `frontend/.env` from `frontend/.env.example`.
 
 ```env
 VITE_API_BASE_URL=http://localhost:8081
 ```
 
-Notes:
+## 📸 Screenshots
 
-- In local development, Vite also proxies `/api` to `http://localhost:8081`.
-- If `VITE_API_BASE_URL` is omitted, the frontend falls back to relative `/api` requests and uses the current browser host for WebSockets.
+![alt text](<Screenshot 2026-05-30 at 10.54.09 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.53.52 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.53.39 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.53.12 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.52.58 AM.png>)
 
-## Run Locally
+## 👨‍💻 Author
 
-### Backend
-
-```bash
-cd backend
-go run main.go
-```
-
-The API starts on `http://localhost:8081` if you keep the default `PORT=8081`.
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The frontend runs on `http://localhost:5173`.
-
-## Runtime Behavior
-
-- Database tables are created automatically on backend startup.
-- Room creators are automatically added as members.
-- Protected rooms require a password only for users who are not already members.
-- Messages are stored encrypted, then decrypted when fetched from history.
-- WebSocket connections require membership in the target room.
-
-## API
-
-All HTTP routes are under `/api`.
-
-### Auth
-
-| Method | Path | Auth | Description |
-|---|---|:---:|---|
-| POST | `/api/signup` | No | Create a user and return a JWT |
-| POST | `/api/login` | No | Log in and return a JWT |
-| GET | `/api/me` | Yes | Return the current user |
-| POST | `/api/forgot-password` | No | Create a reset token and send or log a reset link |
-| POST | `/api/reset-password` | No | Reset password using a valid token |
-
-### Rooms
-
-| Method | Path | Auth | Description |
-|---|---|:---:|---|
-| POST | `/api/rooms` | Yes | Create a room, optionally with a password |
-| GET | `/api/rooms` | Yes | List rooms with `member_count` and `is_member` |
-| GET | `/api/rooms/:id` | Yes | Get room details plus members |
-| POST | `/api/rooms/:id/join` | Yes | Join a room, with password if required |
-| DELETE | `/api/rooms/:id/join` | Yes | Leave a room |
-
-### Messages
-
-| Method | Path | Auth | Description |
-|---|---|:---:|---|
-| GET | `/api/rooms/:id/messages` | Yes | Get message history, supports `limit` and `before` |
-| POST | `/api/rooms/:id/messages` | Yes | Send a message via HTTP |
-| GET | `/api/rooms/:id/ws?token=<jwt>` | Yes | Open a room WebSocket |
-
-## WebSocket Protocol
-
-Connect with:
-
-```text
-ws://localhost:8081/api/rooms/:id/ws?token=<jwt>
-```
-
-Client messages:
-
-```json
-{ "content": "hello" }
-```
-
-```json
-{ "type": "typing", "typing": true }
-```
-
-Server messages can include:
-
-- Normal chat messages with `id`, `room_id`, `user_id`, `username`, `content`, and `created_at`
-- Typing events: `{ "type": "typing", "username": "...", "typing": true }`
-- Join events: `{ "type": "join", "username": "...", "message": "..." }`
-
-## Database Tables
-
-The backend creates these tables automatically:
-
-- `users`
-- `rooms`
-- `room_members`
-- `messages`
-- `password_reset_tokens`
-
-## Development Notes
-
-- CORS and WebSocket origin checks default to `APP_URL`, or use `CORS_ALLOWED_ORIGINS` when you need multiple frontend origins.
-- The Vite dev server proxies `/api` requests and WebSocket upgrades to the backend.
-- WebSocket auth accepts the JWT through the `token` query parameter.
+Pankaj Roy  
+[Portfolio](https://pankaj231123.github.io/) | [LinkedIn](https://www.linkedin.com/in/pankaj-roy705/)
