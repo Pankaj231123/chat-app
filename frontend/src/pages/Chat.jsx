@@ -65,6 +65,29 @@ export default function Chat() {
   }, [])
 
   useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key !== 'Escape') return
+
+      if (showCreateModal) {
+        closeCreateModal()
+        return
+      }
+
+      if (showJoinModal) {
+        closeJoinModal()
+        return
+      }
+
+      if (activeRoom) {
+        closeActiveRoom()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showCreateModal, showJoinModal, activeRoom])
+
+  useEffect(() => {
     const roomId = searchParams.get('room')
     if (!roomId) {
       if (activeRoom) closeActiveRoom(false)
@@ -565,16 +588,26 @@ export default function Chat() {
       {/* Join Password Modal */}
       {showJoinModal && pendingRoom && (
         <div style={s.overlay} onClick={closeJoinModal}>
-          <div style={s.modal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalHeader}>
-              <span style={s.modalTitle}>🔒 Password Required</span>
-              <button onClick={closeJoinModal} style={s.closeBtn}>✕</button>
-            </div>
-            <form onSubmit={handleJoinWithPassword} style={s.modalBody}>
-              <p style={s.joinSubtitle}>
-                Enter the password to join <strong>#{pendingRoom.name}</strong>
-              </p>
+          <div style={{ ...s.modal, ...s.joinModal }} onClick={e => e.stopPropagation()}>
+            <div style={{ ...s.modalHeader, ...s.joinModalHeader }}>
               <div>
+                <div style={s.modalEyebrow}>Protected Access</div>
+                <span style={{ ...s.modalTitle, ...s.joinModalTitle }}>Password Required</span>
+              </div>
+              <button onClick={closeJoinModal} style={{ ...s.closeBtn, ...s.joinCloseBtn }}>✕</button>
+            </div>
+            <form onSubmit={handleJoinWithPassword} style={{ ...s.modalBody, ...s.joinModalBody }}>
+              <div style={s.joinIntroCard}>
+                <div style={s.joinRoomBadgeRow}>
+                  <span style={s.joinRoomPill}>🔒 #{pendingRoom.name}</span>
+                  <span style={s.joinMembersPill}>{pendingRoom.member_count} member{pendingRoom.member_count !== 1 ? 's' : ''}</span>
+                </div>
+                <p style={s.joinLead}>
+                  This room is password protected. Enter the access key below to join the conversation.
+                </p>
+              </div>
+
+              <div style={s.fieldBlock}>
                 <label style={s.label}>Room Password</label>
                 <div style={s.pwdRow}>
                   <input
@@ -594,6 +627,7 @@ export default function Chat() {
                     {showJoinPwd ? '🙈' : '👁'}
                   </button>
                 </div>
+                <p style={s.fieldHint}>Ask a room member or the creator if you do not have the password yet.</p>
               </div>
               {joinError && <p style={s.errorText}>{joinError}</p>}
               <div style={s.modalActions}>
@@ -865,6 +899,20 @@ const s = {
   modalTitle: { fontSize: 16, fontWeight: 700, color: '#fff' },
   createModalTitle: { color: '#162233', fontSize: 22, fontWeight: 800 },
   createModalBody: { padding: 24, gap: 18 },
+  joinModal: {
+    width: 500,
+    maxWidth: 'calc(100vw - 28px)',
+    background: 'linear-gradient(180deg, #f8f3ea, #ffffff)',
+    border: '1px solid rgba(17,24,39,0.08)',
+  },
+  joinModalHeader: {
+    padding: '22px 24px 18px',
+    borderBottom: '1px solid rgba(17,24,39,0.08)',
+    background: 'linear-gradient(135deg, rgba(120,81,169,0.16), rgba(91,119,234,0.12))',
+  },
+  joinModalTitle: { color: '#162233', fontSize: 22, fontWeight: 800 },
+  joinCloseBtn: { color: '#546277' },
+  joinModalBody: { padding: 24, gap: 18 },
   closeBtn: { background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1 },
   createCloseBtn: { color: '#546277' },
   modalBody: { padding: 24, display: 'flex', flexDirection: 'column', gap: 16 },
@@ -935,6 +983,46 @@ const s = {
   hintText: { fontSize: 12, color: '#67758b', margin: '8px 0 0', fontWeight: 500, lineHeight: 1.5 },
   hintTextActive: { color: '#764ba2' },
   joinSubtitle: { fontSize: 14, color: '#555', margin: 0 },
+  joinIntroCard: {
+    padding: '18px 18px 16px',
+    borderRadius: 20,
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.92), rgba(240,233,249,0.92))',
+    border: '1px solid rgba(118,75,162,0.14)',
+  },
+  joinRoomBadgeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  joinRoomPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '7px 12px',
+    borderRadius: 999,
+    background: 'rgba(118,75,162,0.12)',
+    color: '#764ba2',
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: '0.04em',
+  },
+  joinMembersPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '7px 12px',
+    borderRadius: 999,
+    background: 'rgba(17,24,39,0.06)',
+    color: '#5c687c',
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  joinLead: {
+    margin: '14px 0 0',
+    fontSize: 14,
+    lineHeight: 1.65,
+    color: '#546277',
+  },
   errorText: { color: '#e53e3e', fontSize: 13, margin: 0 },
   modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
   cancelBtn: {
