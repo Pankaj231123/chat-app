@@ -87,7 +87,25 @@ VITE_API_BASE_URL=http://localhost:8081
 
 ## 📸 Screenshots
 
-![alt text](<Screenshot 2026-05-30 at 10.54.09 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.53.52 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.53.39 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.53.12 AM.png>) ![alt text](<Screenshot 2026-05-30 at 10.52.58 AM.png>)
+### Login
+
+![Login](Login.png)
+
+### Create Page
+
+![Create Page](CreatePage.png)
+
+### Dashboard
+
+![Dashboard](Dashborad.png)
+
+### Private Message
+
+![Private Message](MessagePrivate.png)
+
+### Password Require Popup
+
+![Password Require Popup](PasswordRequirePopup.png)
 
 ## 👨‍💻 Author
 
