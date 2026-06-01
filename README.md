@@ -1,66 +1,82 @@
 # 💬 Real-Time Chat Application
 
-A full-stack real-time chat application built with Go, React, PostgreSQL, and WebSocket.
+A full-stack real-time chat application built with Go, React, PostgreSQL, and WebSocket for live room-based conversations.
 
 ## 🚀 Features
 
-- Real-time messaging using WebSocket
-- User authentication with JWT
-- Persistent message history with PostgreSQL
+- Real-time messaging with WebSocket
+- JWT-based authentication
 - Public and password-protected chat rooms
+- Persistent message history with PostgreSQL
 - Encrypted message storage
+- Typing indicators and room join events
 - Password reset flow
-- Clean React frontend
-- RESTful API for authentication and room management
+- Responsive React frontend
+- REST API for auth, rooms, and message history
 
 ## 🛠️ Tech Stack
 
-**Backend:**
+**Backend**
 
 - Go (Golang)
 - Gin
-- WebSocket (`gorilla/websocket`)
 - PostgreSQL
+- WebSocket (`gorilla/websocket`)
 - JWT Authentication
 - Bcrypt
 
-**Frontend:**
+**Frontend**
 
 - React.js
 - React Router
 - Vite
-- WebSocket client
 - REST API integration
+- WebSocket client
 
 ## 📐 Architecture
 
 ```text
-React Frontend ←→ WebSocket / REST API ←→ Go Backend ←→ PostgreSQL
+React Frontend ←→ REST API / WebSocket ←→ Go Backend ←→ PostgreSQL
 ```
 
-## 🏃 How to Run
+## 📁 Project Structure
 
-**Backend:**
-
-```bash
-cd backend
-go mod download
-go run main.go
+```text
+chat-app/
+├── backend/
+│   ├── config/
+│   ├── crypto/
+│   ├── db/
+│   ├── handlers/
+│   ├── mailer/
+│   ├── middleware/
+│   ├── models/
+│   ├── .env.example
+│   └── main.go
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   └── pages/
+│   ├── .env.example
+│   └── vite.config.js
+└── README.md
 ```
 
-**Frontend:**
+## ✅ Prerequisites
 
-```bash
-cd frontend
-npm install
-npm start
-```
+- Go 1.21+
+- Node.js 18+
+- PostgreSQL
 
 ## ⚙️ Environment Setup
 
-**Backend:**
+### Backend
 
 Create `backend/.env` from `backend/.env.example`.
+
+```bash
+cp backend/.env.example backend/.env
+```
 
 Important variables:
 
@@ -75,15 +91,76 @@ JWT_SECRET=replace_with_a_long_random_secret
 MESSAGE_ENC_KEY=your_64_char_hex_key
 APP_URL=http://localhost:5173
 CORS_ALLOWED_ORIGINS=http://localhost:5173
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM=Chat App <you@gmail.com>
 ```
 
-**Frontend:**
+Notes:
+
+- Generate `MESSAGE_ENC_KEY` with `openssl rand -hex 32`
+- Leave `SMTP_HOST` blank to use the no-op mailer and log reset links locally
+- `CORS_ALLOWED_ORIGINS` accepts comma-separated frontend origins
+
+### Frontend
 
 Create `frontend/.env` from `frontend/.env.example`.
+
+```bash
+cp frontend/.env.example frontend/.env
+```
 
 ```env
 VITE_API_BASE_URL=http://localhost:8081
 ```
+
+## 🏃 How to Run
+
+### Backend
+
+```bash
+cd backend
+go mod download
+go run main.go
+```
+
+Backend runs on `http://localhost:8081`.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Frontend runs on `http://localhost:5173`.
+
+## 🔌 API Overview
+
+### Auth
+
+- `POST /api/signup`
+- `POST /api/login`
+- `GET /api/me`
+- `POST /api/forgot-password`
+- `POST /api/reset-password`
+
+### Rooms
+
+- `POST /api/rooms`
+- `GET /api/rooms`
+- `GET /api/rooms/:id`
+- `POST /api/rooms/:id/join`
+- `DELETE /api/rooms/:id/join`
+
+### Messages
+
+- `GET /api/rooms/:id/messages`
+- `POST /api/rooms/:id/messages`
+- `GET /api/rooms/:id/ws?token=<jwt>`
 
 ## 📸 Screenshots
 
